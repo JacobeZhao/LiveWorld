@@ -1,0 +1,69 @@
+[package]
+name = "liveworld"
+version = "0.1.0"
+edition = "2021"
+authors = ["LiveWorld Contributors"]
+description = "Real-time multi-agent virtual world supporting millions of concurrent users"
+license = "MIT"
+
+[lib]
+name = "liveworld"
+path = "src/lib.rs"
+
+[[bin]]
+name = "liveworld"
+path = "src/main.rs"
+
+[[bench]]
+name = "actor_ipc"
+harness = false
+
+[[bench]]
+name = "broadcast"
+harness = false
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+# WebSocket — plain WS for dev (no TLS needed for localhost)
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# HTTP client for LLM APIs (native-tls uses OS TLS, no ring/gcc needed)
+reqwest = { version = "0.12", features = ["json", "native-tls"], default-features = false }
+
+# Hashing for semantic cache
+ahash = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Async trait
+async-trait = "0.1"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio-test = "0.4"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = true

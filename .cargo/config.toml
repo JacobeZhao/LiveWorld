@@ -1,0 +1,9 @@
+# LiveWorld cargo configuration
+#
+# IMPORTANT: On Windows GNU toolchain, MinGW must be in PATH before running
+# cargo build/test/bench. Install via:
+#   winget install -e --id MSYS2.MSYS2   # or
+#   scoop install mingw
+#
+# Then add MinGW bin to PATH:
+#   $env:PATH = "$env:USERPROFILE\scoop\apps\mingw\current\bin;" + $env:PATH
