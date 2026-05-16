@@ -1,121 +1,190 @@
-// WebSocket server: accepts connections, routes client commands to the world
-// engine, and streams state deltas back to each client at 25 Hz.
-// Uses tokio-tungstenite for async WebSocket handling.
+// WebSocket server: accepts connections, authenticates, routes client commands
+// to the world engine, and streams state deltas back to each client at 25 Hz.
 
-use crate::types::{ClientCommand, ServerMessage, SessionId, WorldConfig, now_ms};
-use crate::world_engine::WorldEngine;
+use crate::actor::ActorHandle;
+use crate::types::{
+    ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage,
+    SessionId, WorldConfig,
+};
+use crate::world_engine::{SessionQueue, WorldEngine};
+use ahash::AHashMap;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, interval};
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
-/// Commands sent from WS handler tasks to the world engine manager task.
+/// Thread-safe handle to the world engine.
+pub type SharedEngine = Arc<Mutex<WorldEngine>>;
+
+// ── Rate limiter (token bucket, per-connection) ───────────────────────────────
+
+struct RateLimiter {
+    count: u32,
+    window_start: Instant,
+    limit: u32,
+}
+
+impl RateLimiter {
+    fn new(limit: u32) -> Self {
+        Self { count: 0, window_start: Instant::now(), limit }
+    }
+
+    fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.window_start) >= Duration::from_secs(1) {
+            self.count = 0;
+            self.window_start = now;
+        }
+        if self.count >= self.limit {
+            false
+        } else {
+            self.count += 1;
+            true
+        }
+    }
+}
+
+// ── Engine commands (WS handler → command processor task) ────────────────────
+
 pub enum EngineCommand {
     CreateActor {
         session: SessionId,
-        cmd: ClientCommand,
+        name: String,
+        personality: String,
+        backstory: String,
+        model: LlmModel,
+        position: Position,
+        /// Oneshot reply carries (ActorId, queue) back to the connection handler.
+        reply: oneshot::Sender<Result<(ActorId, SessionQueue), String>>,
     },
     MoveActor {
         session: SessionId,
-        cmd: ClientCommand,
+        to: Position,
     },
     ChatActor {
         session: SessionId,
-        cmd: ClientCommand,
+        text: String,
     },
     DestroyActor {
         session: SessionId,
-        cmd: ClientCommand,
+        actor_id: ActorId,
     },
     SessionDisconnect {
         session: SessionId,
     },
 }
 
-/// Shared, thread-safe handle to the world engine.
-/// The world engine itself runs on a dedicated thread; we wrap it in a Mutex
-/// for access from async handler tasks (lock contention is low: only on
-/// actor spawn/despawn, not on every tick).
-pub type SharedEngine = Arc<Mutex<WorldEngine>>;
+// ── Public entry point ────────────────────────────────────────────────────────
 
-/// Start the WebSocket server. Binds to `addr` and accepts connections.
-/// `engine` must be Arc<Mutex<WorldEngine>> — the tick loop runs separately.
 pub async fn run_ws_server(engine: SharedEngine, cfg: WorldConfig) -> Result<()> {
     let addr = format!("0.0.0.0:{}", cfg.ws_port);
     let listener = TcpListener::bind(&addr).await?;
     info!("WebSocket server listening on {}", addr);
 
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<EngineCommand>(4096);
-
-    // Command processor task: serializes engine mutations.
-    {
-        let engine = Arc::clone(&engine);
-        tokio::spawn(async move {
-            while let Some(cmd) = cmd_rx.recv().await {
-                handle_engine_command(&engine, cmd);
-            }
-        });
-    }
+    let (cmd_tx, cmd_rx) = mpsc::channel::<EngineCommand>(4096);
+    // Single command-processor task serialises all engine mutations.
+    tokio::spawn(command_processor(cmd_rx, Arc::clone(&engine)));
 
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 let session = SessionId::next();
                 info!(session = session.0, %addr, "New connection");
-                let engine = Arc::clone(&engine);
-                let cmd_tx = cmd_tx.clone();
-                tokio::spawn(handle_connection(stream, addr, session, engine, cmd_tx));
+                tokio::spawn(handle_connection(stream, addr, session, cmd_tx.clone()));
             }
-            Err(e) => {
-                error!("Accept error: {}", e);
+            Err(e) => error!("Accept error: {}", e),
+        }
+    }
+}
+
+// ── Command processor ─────────────────────────────────────────────────────────
+
+/// Runs as a single task; owns a local `session_handles` map so that
+/// MoveActor / ChatActor bypass the engine lock entirely (SPSC push is lock-free).
+async fn command_processor(
+    mut cmd_rx: mpsc::Receiver<EngineCommand>,
+    engine: SharedEngine,
+) {
+    let mut session_handles: AHashMap<SessionId, ActorHandle> = AHashMap::new();
+
+    while let Some(cmd) = cmd_rx.recv().await {
+        match cmd {
+            EngineCommand::CreateActor {
+                session,
+                name,
+                personality,
+                backstory,
+                model,
+                position,
+                reply,
+            } => {
+                if name.len() > 64 {
+                    let _ = reply.send(Err("Name too long (max 64 chars)".into()));
+                    continue;
+                }
+                let position = Position::new(
+                    position.x.clamp(0.0, 9_999.0),
+                    position.y.clamp(0.0, 9_999.0),
+                );
+                let id = ActorId::next();
+                let spec =
+                    ActorSpec { id, name, personality, backstory, model, position };
+                let (handle, queue) = {
+                    let mut eng = engine.lock().unwrap();
+                    eng.spawn_actor_for_session(spec, session)
+                };
+                session_handles.insert(session, handle);
+                info!(session = session.0, actor = id.0, "Actor spawned");
+                let _ = reply.send(Ok((id, queue)));
+            }
+
+            EngineCommand::MoveActor { session, to } => {
+                let to = Position::new(
+                    to.x.clamp(0.0, 9_999.0),
+                    to.y.clamp(0.0, 9_999.0),
+                );
+                if let Some(handle) = session_handles.get(&session) {
+                    handle.send(ActorMessage::Move { to });
+                }
+            }
+
+            EngineCommand::ChatActor { session, text } => {
+                if text.len() > 500 {
+                    continue;
+                }
+                if let Some(handle) = session_handles.get(&session) {
+                    handle.send(ActorMessage::Speak { text });
+                }
+            }
+
+            EngineCommand::DestroyActor { session, actor_id: _ } => {
+                session_handles.remove(&session);
+                let mut eng = engine.lock().unwrap();
+                eng.remove_session(session, true);
+            }
+
+            EngineCommand::SessionDisconnect { session } => {
+                session_handles.remove(&session);
+                let mut eng = engine.lock().unwrap();
+                eng.remove_session(session, true);
+                info!(session = session.0, "Session disconnected");
             }
         }
     }
 }
 
-fn handle_engine_command(engine: &SharedEngine, cmd: EngineCommand) {
-    use crate::types::{ActorId, ActorSpec, LlmModel, Position};
-
-    let mut eng = engine.lock().unwrap();
-    match cmd {
-        EngineCommand::CreateActor { session, cmd: ClientCommand::CreateActor { name, personality, backstory, model, position } } => {
-            let id = ActorId::next();
-            let spec = ActorSpec { id, name, personality, backstory, model, position };
-            let cell = position.to_grid_cell(10.0);
-            let handle = eng.spawn_actor(spec);
-            let q = eng.add_session(session, id, cell);
-            info!(session = session.0, actor = id.0, "Actor created and session registered");
-            drop(q); // Queue owned by connection handler; passed via engine
-            drop(handle);
-        }
-        EngineCommand::MoveActor { session: _, cmd: ClientCommand::MoveActor { actor_id, to } } => {
-            if let Some(handle) = eng.full_snapshot().iter().find(|s| s.id == actor_id) {
-                // In production: use actor handle map. Simplified: log only.
-                let _ = handle;
-            }
-        }
-        EngineCommand::DestroyActor { session, cmd: ClientCommand::DestroyActor { actor_id } } => {
-            eng.despawn_actor(actor_id);
-            eng.remove_session(session);
-        }
-        EngineCommand::SessionDisconnect { session } => {
-            eng.remove_session(session);
-            info!(session = session.0, "Session disconnected");
-        }
-        _ => {}
-    }
-}
+// ── Per-connection handler ────────────────────────────────────────────────────
 
 async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
     session: SessionId,
-    engine: SharedEngine,
     cmd_tx: mpsc::Sender<EngineCommand>,
 ) {
     let ws_stream = match tokio_tungstenite::accept_async(stream).await {
@@ -128,11 +197,10 @@ async fn handle_connection(
 
     let (mut ws_sink, mut ws_source) = ws_stream.split();
 
-    // Outbound delta sender: runs a loop that drains the session's delta queue.
-    // We spin up a separate task so inbound and outbound are decoupled.
-    let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(64);
+    // Internal channel: all outbound messages go through here so the inbound
+    // loop and pump task don't need to share the sink.
+    let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(128);
 
-    // Outbound task.
     let out_task = tokio::spawn(async move {
         while let Some(bytes) = out_rx.recv().await {
             if ws_sink.send(Message::Binary(bytes.into())).await.is_err() {
@@ -141,72 +209,190 @@ async fn handle_connection(
         }
     });
 
-    // Delta pump: every tick interval, check the session queue and forward deltas.
-    // The session queue is only available after CreateActor is processed, so we
-    // poll the engine for it (simplified; production would pass queue handle directly).
-    let pump_engine = Arc::clone(&engine);
-    let pump_out = out_tx.clone();
-    let pump_session = session;
-    let pump_task = tokio::spawn(async move {
-        let mut tick_interval = interval(Duration::from_millis(40)); // 25 Hz
-        loop {
-            tick_interval.tick().await;
-            // In the full implementation, each session has its own queue handle.
-            // For now we read from the engine's shared state (demonstrates the pattern).
-            let _ = (pump_engine.lock(), pump_out.clone(), pump_session);
+    // Auth: if LIVEWORLD_TOKEN is set, first message must be {"token":"..."}.
+    if std::env::var("LIVEWORLD_TOKEN").is_ok() {
+        match ws_source.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let provided = serde_json::from_str::<serde_json::Value>(&text)
+                    .ok()
+                    .and_then(|v| v["token"].as_str().map(str::to_owned));
+                if !crate::auth::validate_token(provided.as_deref()) {
+                    send_error(&out_tx, 401, "Unauthorized").await;
+                    out_task.abort();
+                    return;
+                }
+            }
+            _ => {
+                out_task.abort();
+                return;
+            }
         }
-    });
+    }
 
-    // Inbound message loop.
+    let mut rate = RateLimiter::new(20); // 20 commands / second
+    let mut pump_task: Option<tokio::task::JoinHandle<()>> = None;
+    let mut has_actor = false;
+
     while let Some(msg) = ws_source.next().await {
         match msg {
             Ok(Message::Text(text)) => {
+                if !rate.allow() {
+                    send_error(&out_tx, 429, "Rate limit exceeded").await;
+                    continue;
+                }
+
                 match serde_json::from_str::<ClientCommand>(&text) {
                     Ok(cmd) => {
-                        let engine_cmd = match &cmd {
-                            ClientCommand::CreateActor { .. } => {
-                                Some(EngineCommand::CreateActor { session, cmd })
-                            }
-                            ClientCommand::MoveActor { .. } => {
-                                Some(EngineCommand::MoveActor { session, cmd })
-                            }
-                            ClientCommand::ChatActor { .. } => {
-                                Some(EngineCommand::ChatActor { session, cmd })
-                            }
-                            ClientCommand::DestroyActor { .. } => {
-                                Some(EngineCommand::DestroyActor { session, cmd })
-                            }
-                        };
-                        if let Some(ec) = engine_cmd {
-                            let _ = cmd_tx.send(ec).await;
-                        }
+                        handle_client_command(
+                            cmd,
+                            session,
+                            &cmd_tx,
+                            &out_tx,
+                            &mut pump_task,
+                            &mut has_actor,
+                        )
+                        .await;
                     }
                     Err(e) => {
-                        warn!(session = session.0, "Bad command: {}", e);
-                        let err = serde_json::to_string(&ServerMessage::Error {
-                            code: 400,
-                            message: e.to_string(),
-                        })
-                        .unwrap_or_default();
-                        let _ = out_tx.send(err.into_bytes()).await;
+                        send_error(&out_tx, 400, &e.to_string()).await;
+                    }
+                }
+            }
+            Ok(Message::Binary(bytes)) => {
+                // Accept binary JSON for clients that prefer it.
+                if !rate.allow() {
+                    send_error(&out_tx, 429, "Rate limit exceeded").await;
+                    continue;
+                }
+                if let Ok(text) = std::str::from_utf8(&bytes) {
+                    match serde_json::from_str::<ClientCommand>(text) {
+                        Ok(cmd) => {
+                            handle_client_command(
+                                cmd,
+                                session,
+                                &cmd_tx,
+                                &out_tx,
+                                &mut pump_task,
+                                &mut has_actor,
+                            )
+                            .await;
+                        }
+                        Err(e) => send_error(&out_tx, 400, &e.to_string()).await,
                     }
                 }
             }
             Ok(Message::Close(_)) | Err(_) => break,
-            Ok(Message::Ping(p)) => {
-                // tungstenite auto-responds to pings; nothing to do here.
-                let _ = p;
-            }
+            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => {} // auto-handled by tungstenite
             _ => {}
         }
     }
 
     // Cleanup on disconnect.
-    pump_task.abort();
+    if let Some(p) = pump_task {
+        p.abort();
+    }
     out_task.abort();
     let _ = cmd_tx.send(EngineCommand::SessionDisconnect { session }).await;
-    info!(session = session.0, "Connection closed");
+    info!(session = session.0, %addr, "Connection closed");
 }
+
+async fn handle_client_command(
+    cmd: ClientCommand,
+    session: SessionId,
+    cmd_tx: &mpsc::Sender<EngineCommand>,
+    out_tx: &mpsc::Sender<Vec<u8>>,
+    pump_task: &mut Option<tokio::task::JoinHandle<()>>,
+    has_actor: &mut bool,
+) {
+    match cmd {
+        ClientCommand::CreateActor {
+            name,
+            personality,
+            backstory,
+            model,
+            position,
+        } => {
+            if *has_actor {
+                send_error(out_tx, 409, "Session already has an actor").await;
+                return;
+            }
+            let (reply_tx, reply_rx) = oneshot::channel();
+            if cmd_tx
+                .send(EngineCommand::CreateActor {
+                    session,
+                    name,
+                    personality,
+                    backstory,
+                    model,
+                    position,
+                    reply: reply_tx,
+                })
+                .await
+                .is_err()
+            {
+                return;
+            }
+            match reply_rx.await {
+                Ok(Ok((actor_id, queue))) => {
+                    *has_actor = true;
+                    // Spawn delta pump: drains the session queue every tick.
+                    let pump_out = out_tx.clone();
+                    *pump_task = Some(tokio::spawn(async move {
+                        let mut ticker = interval(Duration::from_millis(40)); // 25 Hz
+                        loop {
+                            ticker.tick().await;
+                            let deltas: Vec<_> = {
+                                let mut q = queue.lock().unwrap();
+                                q.drain(..).collect()
+                            };
+                            for delta in deltas {
+                                let bytes = serde_json::to_vec(&ServerMessage::WorldDelta(delta))
+                                    .unwrap_or_default();
+                                if pump_out.send(bytes).await.is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                    }));
+                    let bytes = serde_json::to_vec(&ServerMessage::ActorCreated { actor_id })
+                        .unwrap_or_default();
+                    let _ = out_tx.send(bytes).await;
+                }
+                Ok(Err(e)) => send_error(out_tx, 400, &e).await,
+                Err(_) => {} // sender dropped (engine shutting down)
+            }
+        }
+
+        ClientCommand::MoveActor { to, .. } => {
+            let _ = cmd_tx.send(EngineCommand::MoveActor { session, to }).await;
+        }
+
+        ClientCommand::ChatActor { text, .. } => {
+            let _ = cmd_tx.send(EngineCommand::ChatActor { session, text }).await;
+        }
+
+        ClientCommand::DestroyActor { actor_id } => {
+            if let Some(p) = pump_task.take() {
+                p.abort();
+            }
+            *has_actor = false;
+            let _ = cmd_tx
+                .send(EngineCommand::DestroyActor { session, actor_id })
+                .await;
+        }
+    }
+}
+
+async fn send_error(out_tx: &mpsc::Sender<Vec<u8>>, code: u32, message: &str) {
+    let bytes = serde_json::to_vec(&ServerMessage::Error {
+        code,
+        message: message.to_owned(),
+    })
+    .unwrap_or_default();
+    let _ = out_tx.send(bytes).await;
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -231,25 +417,40 @@ mod tests {
             "position": {"x": 100.0, "y": 200.0}
         }"#;
         let cmd: ClientCommand = serde_json::from_str(json).unwrap();
-        matches!(cmd, ClientCommand::CreateActor { .. });
+        assert!(matches!(cmd, ClientCommand::CreateActor { .. }));
     }
 
     #[test]
     fn server_message_serializes() {
-        use crate::types::ActorId;
         let msg = ServerMessage::ActorCreated { actor_id: ActorId(42) };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("ActorCreated"));
         assert!(json.contains("42"));
     }
 
+    #[test]
+    fn move_command_deserializes() {
+        let json = r#"{"type":"MoveActor","actor_id":1,"to":{"x":50.0,"y":75.0}}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(cmd, ClientCommand::MoveActor { .. }));
+    }
+
     #[tokio::test]
-    async fn engine_command_channel_works() {
+    async fn command_channel_round_trip() {
         let (tx, mut rx) = mpsc::channel::<EngineCommand>(8);
-        tx.send(EngineCommand::SessionDisconnect { session: SessionId(1) })
+        tx.send(EngineCommand::SessionDisconnect { session: SessionId(999) })
             .await
             .unwrap();
         let cmd = rx.recv().await.unwrap();
-        matches!(cmd, EngineCommand::SessionDisconnect { .. });
+        assert!(matches!(cmd, EngineCommand::SessionDisconnect { .. }));
+    }
+
+    #[test]
+    fn rate_limiter_blocks_after_limit() {
+        let mut rl = RateLimiter::new(3);
+        assert!(rl.allow());
+        assert!(rl.allow());
+        assert!(rl.allow());
+        assert!(!rl.allow()); // 4th denied
     }
 }

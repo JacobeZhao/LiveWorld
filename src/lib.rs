@@ -1,9 +1,11 @@
 pub mod actor;
 pub mod actor_runtime;
 pub mod agent_decision;
+pub mod auth;
 pub mod global_agents;
 pub mod interest_manager;
 pub mod llm_adapter;
+pub mod metrics;
 pub mod persistence;
 pub mod semantic_cache;
 pub mod spatial_grid;

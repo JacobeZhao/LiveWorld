@@ -257,23 +257,28 @@ impl AntiCheatAgent {
 // ── Directive processor ───────────────────────────────────────────────────────
 
 /// Receives WorldDirectives and applies them to the world engine.
-/// Runs as a Tokio task, reading from the channel.
-pub async fn process_directives(mut rx: mpsc::Receiver<WorldDirective>) {
+/// Runs as a Tokio task, locking the engine briefly per directive.
+pub async fn process_directives(
+    mut rx: mpsc::Receiver<WorldDirective>,
+    engine: crate::ws_server::SharedEngine,
+) {
     while let Some(directive) = rx.recv().await {
+        // Log first so the lock is not held during I/O.
         match &directive {
-            WorldDirective::NarrativeEvent { message } => {
-                info!(message, "WorldDirective: NarrativeEvent");
-            }
+            WorldDirective::NarrativeEvent { message } => info!(message, "Directive: NarrativeEvent"),
             WorldDirective::EconomyAdjust { resource, delta } => {
-                info!(%resource, delta, "WorldDirective: EconomyAdjust");
+                info!(%resource, delta, "Directive: EconomyAdjust");
             }
             WorldDirective::FlagActor { actor_id, reason } => {
-                warn!(actor = actor_id.0, reason, "WorldDirective: FlagActor");
+                warn!(actor = actor_id.0, reason, "Directive: FlagActor");
             }
             WorldDirective::ForceMove { actor_id, to } => {
-                info!(actor = actor_id.0, ?to, "WorldDirective: ForceMove");
+                info!(actor = actor_id.0, ?to, "Directive: ForceMove");
             }
         }
+        // Apply: lock is held only for the synchronous apply call.
+        let eng = engine.lock().unwrap();
+        eng.apply_directive(&directive);
     }
 }
 
@@ -361,8 +366,14 @@ mod tests {
 
     #[tokio::test]
     async fn directive_processor_runs_without_panic() {
+        use crate::types::WorldConfig;
+        use crate::world_engine::WorldEngine;
+        use crate::ws_server::SharedEngine;
+
+        let engine: SharedEngine =
+            std::sync::Arc::new(std::sync::Mutex::new(WorldEngine::new(WorldConfig::default())));
         let (tx, rx) = mpsc::channel(32);
-        tokio::spawn(process_directives(rx));
+        tokio::spawn(process_directives(rx, engine));
 
         tx.send(WorldDirective::NarrativeEvent { message: "Test".to_string() })
             .await

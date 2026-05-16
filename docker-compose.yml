@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  liveworld:
+    build: .
+    container_name: liveworld
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # WebSocket
+      - "8081:8081"   # HTTP (metrics + frontend)
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      # Uncomment to enable authentication:
+      # - LIVEWORLD_TOKEN=${LIVEWORLD_TOKEN}
+      # Uncomment to enable real LLMs:
+      # - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # - OLLAMA_URL=${OLLAMA_URL}
+    volumes:
+      - liveworld-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  liveworld-data:
+    driver: local

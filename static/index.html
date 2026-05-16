@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveWorld</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: monospace; display: flex; flex-direction: column; height: 100vh; }
+header { padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 1rem; color: #58a6ff; }
+#status { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: #21262d; }
+#status.connected { background: #1b4332; color: #3fb950; }
+#status.error { background: #3d1f1f; color: #f85149; }
+main { display: flex; flex: 1; overflow: hidden; }
+#sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; padding: 12px; gap: 8px; }
+#sidebar label { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+#sidebar input, #sidebar select { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e6edf3; padding: 5px 8px; font-size: 0.8rem; font-family: monospace; }
+#sidebar input:focus, #sidebar select:focus { outline: none; border-color: #58a6ff; }
+button { background: #238636; color: #fff; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-family: monospace; font-size: 0.8rem; width: 100%; }
+button:hover { background: #2ea043; }
+button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+#canvas-container { flex: 1; position: relative; overflow: hidden; }
+canvas { display: block; cursor: crosshair; }
+#log { position: absolute; bottom: 8px; left: 8px; right: 8px; max-height: 120px; overflow-y: auto; background: rgba(13,17,23,0.85); border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-size: 0.7rem; color: #8b949e; }
+#log div { margin-bottom: 2px; }
+#log .evt { color: #58a6ff; }
+#log .err { color: #f85149; }
+#log .chat { color: #a5d6ff; }
+#stats { font-size: 0.7rem; color: #8b949e; margin-top: auto; padding-top: 8px; border-top: 1px solid #30363d; }
+#chat-input { display: flex; gap: 4px; }
+#chat-input input { flex: 1; }
+#chat-input button { width: auto; padding: 5px 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LiveWorld</h1>
+  <span id="status">disconnected</span>
+  <span id="tick-counter" style="font-size:0.75rem;color:#8b949e;margin-left:auto">tick —</span>
+</header>
+<main>
+  <div id="sidebar">
+    <label>Actor Name</label>
+    <input id="inp-name" value="Wanderer" maxlength="64">
+
+    <label>Personality</label>
+    <input id="inp-personality" value="curious explorer">
+
+    <label>Backstory</label>
+    <input id="inp-backstory" value="A traveler from distant lands">
+
+    <label>Model</label>
+    <select id="inp-model">
+      <option value="Mock" selected>Mock (no API key)</option>
+      <option value="Gpt4o">GPT-4o</option>
+      <option value="ClaudeSonnet">Claude Sonnet</option>
+    </select>
+
+    <button id="btn-join" onclick="joinWorld()">Join World</button>
+    <button id="btn-leave" onclick="leaveWorld()" disabled>Leave World</button>
+
+    <label style="margin-top:8px">Chat</label>
+    <div id="chat-input">
+      <input id="inp-chat" placeholder="Say something…" maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()">→</button>
+    </div>
+
+    <div id="stats">
+      Actors: <span id="s-actors">—</span><br>
+      Sessions: <span id="s-sessions">—</span><br>
+      Uptime: <span id="s-uptime">—</span>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="world"></canvas>
+    <div id="log"></div>
+  </div>
+</main>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const WS_URL   = 'ws://localhost:8080';
+const HTTP_URL = 'http://localhost:8081';
+const WORLD_W  = 10000; // coordinate space
+const WORLD_H  = 10000;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws = null;
+let myActorId = null;
+let actors = new Map(); // id → {id, name, x, y, last_utterance}
+let canvas, ctx, cw, ch;
+let camera = { x: 0, y: 0, scale: 0.08 }; // world→canvas scale
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  canvas = document.getElementById('world');
+  ctx = canvas.getContext('2d');
+  resize();
+  window.addEventListener('resize', resize);
+  canvas.addEventListener('click', onCanvasClick);
+  render();
+  pollMetrics();
+  connectWS();
+});
+
+function resize() {
+  const c = document.getElementById('canvas-container');
+  cw = c.clientWidth;
+  ch = c.clientHeight;
+  canvas.width = cw;
+  canvas.height = ch;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  setStatus('connecting…', '');
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    setStatus('connected', 'connected');
+    log('Connected to LiveWorld server', 'evt');
+  };
+
+  ws.onmessage = (e) => {
+    let text;
+    if (e.data instanceof ArrayBuffer) {
+      text = new TextDecoder().decode(e.data);
+    } else {
+      text = e.data;
+    }
+    try {
+      handleMessage(JSON.parse(text));
+    } catch (err) {
+      console.error('Parse error', err, text);
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('disconnected', '');
+    myActorId = null;
+    log('Disconnected', 'err');
+    document.getElementById('btn-join').disabled = false;
+    document.getElementById('btn-leave').disabled = true;
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => {
+    setStatus('error', 'error');
+  };
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'ActorCreated':
+      myActorId = msg.actor_id;
+      log(`Actor created (id=${myActorId})`, 'evt');
+      document.getElementById('btn-join').disabled = true;
+      document.getElementById('btn-leave').disabled = false;
+      // Centre camera on world origin for now
+      camera.x = cw / 2;
+      camera.y = ch / 2;
+      break;
+
+    case 'WorldDelta':
+      document.getElementById('tick-counter').textContent = `tick ${msg.tick}`;
+      for (const a of msg.updates) {
+        actors.set(a.id, {
+          id: a.id,
+          name: a.name,
+          x: a.position.x,
+          y: a.position.y,
+          utterance: a.last_utterance,
+        });
+        if (a.last_utterance) {
+          log(`[${a.name}] ${a.last_utterance}`, 'chat');
+        }
+      }
+      for (const id of msg.removed) {
+        actors.delete(id);
+      }
+      break;
+
+    case 'Error':
+      log(`Error ${msg.code}: ${msg.message}`, 'err');
+      if (msg.code === 409) {
+        // already has actor — update UI
+        document.getElementById('btn-join').disabled = true;
+        document.getElementById('btn-leave').disabled = false;
+      }
+      break;
+  }
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+// ── World actions ─────────────────────────────────────────────────────────────
+function joinWorld() {
+  const name = document.getElementById('inp-name').value.trim() || 'Wanderer';
+  const personality = document.getElementById('inp-personality').value.trim();
+  const backstory = document.getElementById('inp-backstory').value.trim();
+  const model = document.getElementById('inp-model').value;
+  // Spawn at a random position in the middle of the world.
+  const x = 4000 + Math.random() * 2000;
+  const y = 4000 + Math.random() * 2000;
+  send({
+    type: 'CreateActor',
+    name, personality, backstory, model,
+    position: { x, y }
+  });
+}
+
+function leaveWorld() {
+  if (myActorId == null) return;
+  send({ type: 'DestroyActor', actor_id: myActorId });
+  myActorId = null;
+  document.getElementById('btn-join').disabled = false;
+  document.getElementById('btn-leave').disabled = true;
+}
+
+function sendChat() {
+  const text = document.getElementById('inp-chat').value.trim();
+  if (!text || myActorId == null) return;
+  send({ type: 'ChatActor', actor_id: myActorId, text });
+  document.getElementById('inp-chat').value = '';
+}
+
+function onCanvasClick(e) {
+  if (myActorId == null) return;
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  // canvas → world
+  const wx = (cx - camera.x) / camera.scale;
+  const wy = (cy - camera.y) / camera.scale;
+  const clamped = {
+    x: Math.max(0, Math.min(9999, wx)),
+    y: Math.max(0, Math.min(9999, wy)),
+  };
+  send({ type: 'MoveActor', actor_id: myActorId, to: clamped });
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function render() {
+  requestAnimationFrame(render);
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Grid
+  ctx.strokeStyle = '#161b22';
+  ctx.lineWidth = 0.5;
+  const gridStep = 1000 * camera.scale;
+  if (gridStep > 10) {
+    for (let gx = camera.x % gridStep; gx < cw; gx += gridStep) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ch); ctx.stroke();
+    }
+    for (let gy = camera.y % gridStep; gy < ch; gy += gridStep) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(cw, gy); ctx.stroke();
+    }
+  }
+
+  // Actors
+  for (const a of actors.values()) {
+    const sx = camera.x + a.x * camera.scale;
+    const sy = camera.y + a.y * camera.scale;
+    const isMe = a.id === myActorId;
+
+    ctx.beginPath();
+    ctx.arc(sx, sy, isMe ? 6 : 4, 0, Math.PI * 2);
+    ctx.fillStyle = isMe ? '#58a6ff' : '#3fb950';
+    ctx.fill();
+    if (isMe) {
+      ctx.strokeStyle = '#a5d6ff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = isMe ? '#e6edf3' : '#8b949e';
+    ctx.font = `${isMe ? 11 : 9}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(a.name, sx, sy - 10);
+
+    if (a.utterance) {
+      ctx.fillStyle = '#a5d6ff';
+      ctx.font = '9px monospace';
+      ctx.fillText(truncate(a.utterance, 30), sx, sy + 18);
+    }
+  }
+
+  // My position label
+  if (myActorId != null && actors.has(myActorId)) {
+    const me = actors.get(myActorId);
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`pos (${me.x.toFixed(0)}, ${me.y.toFixed(0)})`, 8, ch - 30);
+  }
+
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`actors: ${actors.size}  scroll: wheel  zoom: Ctrl+wheel`, 8, ch - 16);
+}
+
+// Mouse wheel: pan (default) or zoom (Ctrl held)
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    camera.scale *= factor;
+    camera.scale = Math.max(0.005, Math.min(2, camera.scale));
+  } else {
+    camera.x -= e.deltaX;
+    camera.y -= e.deltaY;
+  }
+}, { passive: false });
+
+// ── Metrics polling ───────────────────────────────────────────────────────────
+function pollMetrics() {
+  fetch(`${HTTP_URL}/metrics`)
+    .then(r => r.json())
+    .then(m => {
+      document.getElementById('s-actors').textContent   = m.actors;
+      document.getElementById('s-sessions').textContent = m.sessions;
+      document.getElementById('s-uptime').textContent   = formatUptime(m.uptime_secs);
+    })
+    .catch(() => {})
+    .finally(() => setTimeout(pollMetrics, 5000));
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setStatus(text, cls) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = cls;
+}
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = cls || '';
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  // Keep at most 100 lines
+  while (el.children.length > 100) el.removeChild(el.firstChild);
+}
+
+function truncate(s, n) {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function formatUptime(secs) {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+</script>
+</body>
+</html>
