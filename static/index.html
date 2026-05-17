@@ -3,115 +3,384 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiveWorld</title>
+<title>LiveWorld — Real-time AI World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
+:root {
+  --bg:       #080b14;
+  --surface:  rgba(15, 20, 40, 0.85);
+  --border:   rgba(120, 100, 255, 0.2);
+  --accent:   #7c6fff;
+  --gold:     #f0c060;
+  --green:    #40e0a0;
+  --red:      #ff5566;
+  --text:     #d0d8f0;
+  --muted:    #6070a0;
+  --radius:   12px;
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0d1117; color: #e6edf3; font-family: monospace; display: flex; flex-direction: column; height: 100vh; }
-header { padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
-header h1 { font-size: 1rem; color: #58a6ff; }
-#status { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: #21262d; }
-#status.connected { background: #1b4332; color: #3fb950; }
-#status.error { background: #3d1f1f; color: #f85149; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-weight: 300;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  background: rgba(8, 11, 20, 0.95);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: 'Cinzel', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.05em;
+}
+.logo-sub {
+  font-size: 0.65rem;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  -webkit-text-fill-color: var(--muted);
+}
+#status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  transition: all 0.3s;
+}
+#status-badge .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: all 0.3s;
+}
+#status-badge.connected { border-color: rgba(64,224,160,0.4); }
+#status-badge.connected .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+#status-badge.error { border-color: rgba(255,85,102,0.4); }
+#status-badge.error .dot { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+#tick-counter { margin-left: auto; font-size: 0.68rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── Layout ── */
 main { display: flex; flex: 1; overflow: hidden; }
-#sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; padding: 12px; gap: 8px; }
-#sidebar label { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
-#sidebar input, #sidebar select { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e6edf3; padding: 5px 8px; font-size: 0.8rem; font-family: monospace; }
-#sidebar input:focus, #sidebar select:focus { outline: none; border-color: #58a6ff; }
-button { background: #238636; color: #fff; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-family: monospace; font-size: 0.8rem; width: 100%; }
-button:hover { background: #2ea043; }
-button:disabled { background: #21262d; color: #8b949e; cursor: not-allowed; }
+
+/* ── Sidebar ── */
+#sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 14px;
+  overflow-y: auto;
+}
+.panel {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.panel-title {
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  color: var(--gold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 4px;
+}
+input, select, textarea {
+  width: 100%;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-family: 'Inter', sans-serif;
+  transition: border-color 0.2s;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124,111,255,0.15);
+}
+select option { background: #0f1428; }
+.field { display: flex; flex-direction: column; }
+
+/* ── Buttons ── */
+.btn-primary {
+  background: linear-gradient(135deg, #6a5fff, #9a6fff);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  width: 100%;
+  transition: all 0.2s;
+  box-shadow: 0 2px 12px rgba(106,95,255,0.35);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(106,95,255,0.5);
+}
+.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.btn-secondary {
+  background: rgba(255,255,255,0.05);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.78rem;
+  width: 100%;
+  transition: all 0.2s;
+}
+.btn-secondary:hover:not(:disabled) { background: rgba(255,85,102,0.1); border-color: rgba(255,85,102,0.4); color: var(--red); }
+.btn-secondary:disabled { opacity: 0.25; cursor: not-allowed; }
+
+/* ── Chat ── */
+.chat-row { display: flex; gap: 6px; }
+.chat-row input { flex: 1; }
+.chat-send {
+  background: rgba(124,111,255,0.2);
+  border: 1px solid rgba(124,111,255,0.35);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.chat-send:hover { background: rgba(124,111,255,0.35); }
+
+/* ── Stats ── */
+#stats {
+  font-size: 0.72rem;
+  color: var(--muted);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: auto;
+}
+.stat-item {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: center;
+}
+.stat-value { font-size: 1.1rem; font-weight: 500; color: var(--text); display: block; }
+.stat-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-item.full { grid-column: 1 / -1; }
+
+/* ── Canvas ── */
 #canvas-container { flex: 1; position: relative; overflow: hidden; }
 canvas { display: block; cursor: crosshair; }
-#log { position: absolute; bottom: 8px; left: 8px; right: 8px; max-height: 120px; overflow-y: auto; background: rgba(13,17,23,0.85); border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; font-size: 0.7rem; color: #8b949e; }
-#log div { margin-bottom: 2px; }
-#log .evt { color: #58a6ff; }
-#log .err { color: #f85149; }
-#log .chat { color: #a5d6ff; }
-#stats { font-size: 0.7rem; color: #8b949e; margin-top: auto; padding-top: 8px; border-top: 1px solid #30363d; }
-#chat-input { display: flex; gap: 4px; }
-#chat-input input { flex: 1; }
-#chat-input button { width: auto; padding: 5px 10px; }
+
+/* ── Event Log ── */
+#log {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  width: 340px;
+  max-height: 140px;
+  overflow-y: auto;
+  background: rgba(8,11,20,0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  color: var(--muted);
+  scrollbar-width: thin;
+}
+#log::-webkit-scrollbar { width: 3px; }
+#log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+#log .line { margin-bottom: 3px; line-height: 1.4; }
+#log .evt { color: var(--accent); }
+#log .err { color: var(--red); }
+#log .chat { color: #a5e8ff; }
+
+/* ── Minimap ── */
+#minimap {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 120px;
+  height: 120px;
+  background: rgba(8,11,20,0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* ── Tooltip / Help ── */
+#help-hint {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.65rem;
+  color: var(--muted);
+  background: rgba(8,11,20,0.7);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px;
+}
 </style>
 </head>
 <body>
+
 <header>
-  <h1>LiveWorld</h1>
-  <span id="status">disconnected</span>
-  <span id="tick-counter" style="font-size:0.75rem;color:#8b949e;margin-left:auto">tick —</span>
+  <div>
+    <div class="logo">⚔ LiveWorld</div>
+    <div class="logo-sub">Real-time AI Multi-Agent Universe</div>
+  </div>
+  <div id="status-badge">
+    <span class="dot"></span>
+    <span id="status-text">connecting</span>
+  </div>
+  <span id="tick-counter">tick —</span>
 </header>
+
 <main>
   <div id="sidebar">
-    <label>Actor Name</label>
-    <input id="inp-name" value="Wanderer" maxlength="64">
 
-    <label>Personality</label>
-    <input id="inp-personality" value="curious explorer">
+    <div class="panel">
+      <div class="panel-title">⚙ Your Character</div>
 
-    <label>Backstory</label>
-    <input id="inp-backstory" value="A traveler from distant lands">
+      <div class="field">
+        <label>Name</label>
+        <input id="inp-name" value="Wanderer" maxlength="64" placeholder="Your hero's name">
+      </div>
+      <div class="field">
+        <label>Personality</label>
+        <input id="inp-personality" value="curious explorer" maxlength="256" placeholder="brave, wise, mysterious…">
+      </div>
+      <div class="field">
+        <label>Backstory</label>
+        <input id="inp-backstory" value="A traveler from distant lands" maxlength="512" placeholder="Where are you from?">
+      </div>
+      <div class="field">
+        <label>AI Model</label>
+        <select id="inp-model">
+          <option value="Mock" selected>✦ Mock (instant, free)</option>
+          <option value="Gpt4o">⚡ GPT-4o</option>
+          <option value="ClaudeSonnet">✧ Claude Sonnet</option>
+        </select>
+      </div>
 
-    <label>Model</label>
-    <select id="inp-model">
-      <option value="Mock" selected>Mock (no API key)</option>
-      <option value="Gpt4o">GPT-4o</option>
-      <option value="ClaudeSonnet">Claude Sonnet</option>
-    </select>
+      <button class="btn-primary" id="btn-join" onclick="joinWorld()">Enter the World</button>
+      <button class="btn-secondary" id="btn-leave" onclick="leaveWorld()" disabled>Leave World</button>
+    </div>
 
-    <button id="btn-join" onclick="joinWorld()">Join World</button>
-    <button id="btn-leave" onclick="leaveWorld()" disabled>Leave World</button>
-
-    <label style="margin-top:8px">Chat</label>
-    <div id="chat-input">
-      <input id="inp-chat" placeholder="Say something…" maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
-      <button onclick="sendChat()">→</button>
+    <div class="panel">
+      <div class="panel-title">💬 Chat</div>
+      <div class="chat-row">
+        <input id="inp-chat" placeholder="Say something to the world…" maxlength="300"
+               onkeydown="if(event.key==='Enter')sendChat()">
+        <button class="chat-send" onclick="sendChat()" title="Send">➤</button>
+      </div>
     </div>
 
     <div id="stats">
-      Actors: <span id="s-actors">—</span><br>
-      Sessions: <span id="s-sessions">—</span><br>
-      Uptime: <span id="s-uptime">—</span>
+      <div class="stat-item">
+        <span class="stat-value" id="s-actors">—</span>
+        <span class="stat-label">Actors</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-value" id="s-sessions">—</span>
+        <span class="stat-label">Online</span>
+      </div>
+      <div class="stat-item full">
+        <span class="stat-value" id="s-uptime" style="font-size:0.85rem">—</span>
+        <span class="stat-label">Server Uptime</span>
+      </div>
     </div>
+
   </div>
 
   <div id="canvas-container">
     <canvas id="world"></canvas>
     <div id="log"></div>
+    <canvas id="minimap"></canvas>
+    <div id="help-hint">Click to move · Scroll to pan · Ctrl+Scroll to zoom</div>
   </div>
 </main>
 
 <script>
-// ── Config ──────────────────────────────────────────────────────────────────
-// Auto-detect URLs: localhost uses fixed ports; production uses same hostname.
-// Both HTTP and WebSocket are served on the same port (8080 local, 443 prod).
+// ── Config ───────────────────────────────────────────────────────────────────
 function getUrls() {
-  const proto    = window.location.protocol;
-  const hostname = window.location.hostname;
-  const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1';
-  const wsProto  = proto === 'https:' ? 'wss' : 'ws';
-  const port     = isLocal ? ':8080' : '';
-  return {
-    ws:   `${wsProto}://${hostname}${port}`,
-    http: isLocal ? 'http://localhost:8080' : window.location.origin,
-  };
+  const proto   = window.location.protocol;
+  const host    = window.location.hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  const wsProto = proto === 'https:' ? 'wss' : 'ws';
+  const port    = isLocal ? ':8080' : '';
+  return { ws: `${wsProto}://${host}${port}`, http: isLocal ? 'http://localhost:8080' : window.location.origin };
 }
 const { ws: WS_URL, http: HTTP_URL } = getUrls();
-const WORLD_W  = 10000; // coordinate space
-const WORLD_H  = 10000;
+const WORLD_W = 10000, WORLD_H = 10000;
 
 // ── State ────────────────────────────────────────────────────────────────────
-let ws = null;
-let myActorId = null;
-let actors = new Map(); // id → {id, name, x, y, last_utterance}
-let canvas, ctx, cw, ch;
-let camera = { x: 0, y: 0, scale: 0.08 }; // world→canvas scale
+let ws = null, myActorId = null;
+let actors = new Map();
+let canvas, ctx, mm, mctx, cw, ch;
+let camera = { x: 0, y: 0, scale: 0.08 };
+let stars = [];
 
-// ── Canvas setup ─────────────────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   canvas = document.getElementById('world');
-  ctx = canvas.getContext('2d');
+  ctx    = canvas.getContext('2d');
+  mm     = document.getElementById('minimap');
+  mctx   = mm.getContext('2d');
+  mm.width = mm.height = 120;
   resize();
   window.addEventListener('resize', resize);
   canvas.addEventListener('click', onCanvasClick);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  generateStars();
   render();
   pollMetrics();
   connectWS();
@@ -119,48 +388,38 @@ window.addEventListener('load', () => {
 
 function resize() {
   const c = document.getElementById('canvas-container');
-  cw = c.clientWidth;
-  ch = c.clientHeight;
-  canvas.width = cw;
-  canvas.height = ch;
+  cw = c.clientWidth; ch = c.clientHeight;
+  canvas.width = cw; canvas.height = ch;
+  camera.x = cw / 2; camera.y = ch / 2;
+}
+
+function generateStars() {
+  stars = Array.from({ length: 180 }, () => ({
+    x: Math.random() * 10000,
+    y: Math.random() * 10000,
+    r: Math.random() * 1.2 + 0.2,
+    a: Math.random() * 0.6 + 0.1,
+  }));
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connectWS() {
-  setStatus('connecting…', '');
+  setStatus('connecting', false);
   ws = new WebSocket(WS_URL);
   ws.binaryType = 'arraybuffer';
-
-  ws.onopen = () => {
-    setStatus('connected', 'connected');
-    log('Connected to LiveWorld server', 'evt');
-  };
-
-  ws.onmessage = (e) => {
-    let text;
-    if (e.data instanceof ArrayBuffer) {
-      text = new TextDecoder().decode(e.data);
-    } else {
-      text = e.data;
-    }
-    try {
-      handleMessage(JSON.parse(text));
-    } catch (err) {
-      console.error('Parse error', err, text);
-    }
-  };
-
+  ws.onopen  = () => { setStatus('connected', true); log('Connected to LiveWorld', 'evt'); };
   ws.onclose = () => {
-    setStatus('disconnected', '');
+    setStatus('disconnected', false);
     myActorId = null;
-    log('Disconnected', 'err');
+    log('Disconnected — reconnecting…', 'err');
     document.getElementById('btn-join').disabled = false;
     document.getElementById('btn-leave').disabled = true;
     setTimeout(connectWS, 3000);
   };
-
-  ws.onerror = () => {
-    setStatus('error', 'error');
+  ws.onerror = () => setStatus('error', false);
+  ws.onmessage = (e) => {
+    const raw = e.data instanceof ArrayBuffer ? new TextDecoder().decode(e.data) : e.data;
+    try { handleMessage(JSON.parse(raw)); } catch(err) { console.error(err, raw); }
   };
 }
 
@@ -168,37 +427,24 @@ function handleMessage(msg) {
   switch (msg.type) {
     case 'ActorCreated':
       myActorId = msg.actor_id;
-      log(`Actor created (id=${myActorId})`, 'evt');
+      log(`✦ Entered world as ${document.getElementById('inp-name').value} (id ${myActorId})`, 'evt');
       document.getElementById('btn-join').disabled = true;
       document.getElementById('btn-leave').disabled = false;
-      // Centre camera on world origin for now
-      camera.x = cw / 2;
-      camera.y = ch / 2;
       break;
-
     case 'WorldDelta':
       document.getElementById('tick-counter').textContent = `tick ${msg.tick}`;
       for (const a of msg.updates) {
-        actors.set(a.id, {
-          id: a.id,
-          name: a.name,
-          x: a.position.x,
-          y: a.position.y,
-          utterance: a.last_utterance,
-        });
-        if (a.last_utterance) {
+        const prev = actors.get(a.id);
+        actors.set(a.id, { id: a.id, name: a.name, x: a.position.x, y: a.position.y,
+          utterance: a.last_utterance, px: prev?.x ?? a.position.x, py: prev?.y ?? a.position.y });
+        if (a.last_utterance && a.last_utterance !== prev?.utterance)
           log(`[${a.name}] ${a.last_utterance}`, 'chat');
-        }
       }
-      for (const id of msg.removed) {
-        actors.delete(id);
-      }
+      for (const id of msg.removed) actors.delete(id);
       break;
-
     case 'Error':
-      log(`Error ${msg.code}: ${msg.message}`, 'err');
+      log(`⚠ ${msg.message}`, 'err');
       if (msg.code === 409) {
-        // already has actor — update UI
         document.getElementById('btn-join').disabled = true;
         document.getElementById('btn-leave').disabled = false;
       }
@@ -207,24 +453,19 @@ function handleMessage(msg) {
 }
 
 function send(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-  }
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-// ── World actions ─────────────────────────────────────────────────────────────
+// ── Actions ───────────────────────────────────────────────────────────────────
 function joinWorld() {
   const name = document.getElementById('inp-name').value.trim() || 'Wanderer';
-  const personality = document.getElementById('inp-personality').value.trim();
-  const backstory = document.getElementById('inp-backstory').value.trim();
-  const model = document.getElementById('inp-model').value;
-  // Spawn at a random position in the middle of the world.
-  const x = 4000 + Math.random() * 2000;
-  const y = 4000 + Math.random() * 2000;
   send({
     type: 'CreateActor',
-    name, personality, backstory, model,
-    position: { x, y }
+    name,
+    personality: document.getElementById('inp-personality').value.trim(),
+    backstory:   document.getElementById('inp-backstory').value.trim(),
+    model:       document.getElementById('inp-model').value,
+    position:    { x: 4000 + Math.random() * 2000, y: 4000 + Math.random() * 2000 }
   });
 }
 
@@ -237,143 +478,210 @@ function leaveWorld() {
 }
 
 function sendChat() {
-  const text = document.getElementById('inp-chat').value.trim();
+  const el = document.getElementById('inp-chat');
+  const text = el.value.trim();
   if (!text || myActorId == null) return;
   send({ type: 'ChatActor', actor_id: myActorId, text });
-  document.getElementById('inp-chat').value = '';
+  el.value = '';
 }
 
 function onCanvasClick(e) {
   if (myActorId == null) return;
   const rect = canvas.getBoundingClientRect();
-  const cx = e.clientX - rect.left;
-  const cy = e.clientY - rect.top;
-  // canvas → world
-  const wx = (cx - camera.x) / camera.scale;
-  const wy = (cy - camera.y) / camera.scale;
-  const clamped = {
-    x: Math.max(0, Math.min(9999, wx)),
-    y: Math.max(0, Math.min(9999, wy)),
-  };
-  send({ type: 'MoveActor', actor_id: myActorId, to: clamped });
+  const wx = ((e.clientX - rect.left) - camera.x) / camera.scale;
+  const wy = ((e.clientY - rect.top)  - camera.y) / camera.scale;
+  send({ type: 'MoveActor', actor_id: myActorId,
+    to: { x: Math.max(0, Math.min(9999, wx)), y: Math.max(0, Math.min(9999, wy)) } });
+}
+
+function onWheel(e) {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    camera.scale *= e.deltaY < 0 ? 1.12 : 0.9;
+    camera.scale = Math.max(0.005, Math.min(2, camera.scale));
+  } else {
+    camera.x -= e.deltaX;
+    camera.y -= e.deltaY;
+  }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
+let frame = 0;
 function render() {
   requestAnimationFrame(render);
-  ctx.fillStyle = '#0d1117';
+  frame++;
+
+  // Background gradient
+  const grad = ctx.createRadialGradient(cw/2, ch/2, 0, cw/2, ch/2, Math.max(cw, ch));
+  grad.addColorStop(0,   '#0e1225');
+  grad.addColorStop(1,   '#080b14');
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, cw, ch);
 
+  // Stars
+  for (const s of stars) {
+    const sx = camera.x + s.x * camera.scale;
+    const sy = camera.y + s.y * camera.scale;
+    if (sx < -2 || sx > cw + 2 || sy < -2 || sy > ch + 2) continue;
+    ctx.globalAlpha = s.a * (0.7 + 0.3 * Math.sin(frame * 0.02 + s.x));
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
   // Grid
-  ctx.strokeStyle = '#161b22';
-  ctx.lineWidth = 0.5;
-  const gridStep = 1000 * camera.scale;
-  if (gridStep > 10) {
-    for (let gx = camera.x % gridStep; gx < cw; gx += gridStep) {
+  ctx.strokeStyle = 'rgba(120,100,255,0.08)';
+  ctx.lineWidth = 0.8;
+  const gs = 1000 * camera.scale;
+  if (gs > 8) {
+    for (let gx = ((camera.x % gs) + gs) % gs; gx < cw; gx += gs) {
       ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ch); ctx.stroke();
     }
-    for (let gy = camera.y % gridStep; gy < ch; gy += gridStep) {
+    for (let gy = ((camera.y % gs) + gs) % gs; gy < ch; gy += gs) {
       ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(cw, gy); ctx.stroke();
     }
   }
+
+  // World boundary glow
+  const bx0 = camera.x, by0 = camera.y;
+  const bx1 = camera.x + WORLD_W * camera.scale;
+  const by1 = camera.y + WORLD_H * camera.scale;
+  ctx.strokeStyle = 'rgba(124,111,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
 
   // Actors
   for (const a of actors.values()) {
     const sx = camera.x + a.x * camera.scale;
     const sy = camera.y + a.y * camera.scale;
     const isMe = a.id === myActorId;
+    const r = isMe ? 9 : 6;
+    const color = isMe ? '#7c6fff' : '#40e0a0';
+    const glow  = isMe ? 'rgba(124,111,255,0.4)' : 'rgba(64,224,160,0.3)';
 
+    // Glow
     ctx.beginPath();
-    ctx.arc(sx, sy, isMe ? 6 : 4, 0, Math.PI * 2);
-    ctx.fillStyle = isMe ? '#58a6ff' : '#3fb950';
+    ctx.arc(sx, sy, r + 8, 0, Math.PI * 2);
+    const g = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, r + 8);
+    g.addColorStop(0, glow);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    // Circle
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
     ctx.fill();
     if (isMe) {
-      ctx.strokeStyle = '#a5d6ff';
+      ctx.strokeStyle = '#fff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
 
-    ctx.fillStyle = isMe ? '#e6edf3' : '#8b949e';
-    ctx.font = `${isMe ? 11 : 9}px monospace`;
+    // Name
+    ctx.font = `${isMe ? 500 : 400} ${isMe ? 11 : 10}px Inter, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(a.name, sx, sy - 10);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillText(a.name, sx + 1, sy - r - 5);
+    ctx.fillStyle = isMe ? '#d0d8f0' : '#a0c0b0';
+    ctx.fillText(a.name, sx, sy - r - 6);
 
+    // Utterance bubble
     if (a.utterance) {
-      ctx.fillStyle = '#a5d6ff';
-      ctx.font = '9px monospace';
-      ctx.fillText(truncate(a.utterance, 30), sx, sy + 18);
+      const txt = truncate(a.utterance, 28);
+      const tw = ctx.measureText(txt).width;
+      const bw = tw + 16, bh = 18, bx = sx - bw / 2, by2 = sy + r + 4;
+      ctx.fillStyle = 'rgba(10,14,30,0.82)';
+      ctx.beginPath();
+      ctx.roundRect(bx, by2, bw, bh, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(160,192,255,0.2)';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+      ctx.fillStyle = '#a5e8ff';
+      ctx.font = '9px Inter, sans-serif';
+      ctx.fillText(txt, sx, by2 + 12);
     }
   }
 
-  // My position label
+  // My coords
   if (myActorId != null && actors.has(myActorId)) {
     const me = actors.get(myActorId);
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '9px monospace';
+    ctx.font = '10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`pos (${me.x.toFixed(0)}, ${me.y.toFixed(0)})`, 8, ch - 30);
+    ctx.fillStyle = 'rgba(96,112,160,0.8)';
+    ctx.fillText(`(${me.x.toFixed(0)}, ${me.y.toFixed(0)})`, 12, ch - 12);
   }
 
-  ctx.fillStyle = '#8b949e';
-  ctx.font = '9px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText(`actors: ${actors.size}  scroll: wheel  zoom: Ctrl+wheel`, 8, ch - 16);
+  // Minimap
+  drawMinimap();
 }
 
-// Mouse wheel: pan (default) or zoom (Ctrl held)
-canvas.addEventListener('wheel', (e) => {
-  e.preventDefault();
-  if (e.ctrlKey || e.metaKey) {
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    camera.scale *= factor;
-    camera.scale = Math.max(0.005, Math.min(2, camera.scale));
-  } else {
-    camera.x -= e.deltaX;
-    camera.y -= e.deltaY;
+function drawMinimap() {
+  const mw = 120, mh = 120;
+  mctx.fillStyle = 'rgba(8,11,20,0.9)';
+  mctx.fillRect(0, 0, mw, mh);
+  mctx.strokeStyle = 'rgba(124,111,255,0.3)';
+  mctx.lineWidth = 1;
+  mctx.strokeRect(0.5, 0.5, mw - 1, mh - 1);
+  const sx = mw / WORLD_W, sy = mh / WORLD_H;
+  for (const a of actors.values()) {
+    const isMe = a.id === myActorId;
+    mctx.beginPath();
+    mctx.arc(a.x * sx, a.y * sy, isMe ? 3 : 2, 0, Math.PI * 2);
+    mctx.fillStyle = isMe ? '#7c6fff' : '#40e0a0';
+    mctx.fill();
   }
-}, { passive: false });
+  // Viewport rect
+  const vx0 = (-camera.x / camera.scale) * sx;
+  const vy0 = (-camera.y / camera.scale) * sy;
+  const vw  = (cw / camera.scale) * sx;
+  const vh  = (ch / camera.scale) * sy;
+  mctx.strokeStyle = 'rgba(240,192,96,0.5)';
+  mctx.lineWidth = 0.8;
+  mctx.strokeRect(vx0, vy0, vw, vh);
+}
 
-// ── Metrics polling ───────────────────────────────────────────────────────────
+// ── Metrics ───────────────────────────────────────────────────────────────────
 function pollMetrics() {
   fetch(`${HTTP_URL}/health`)
     .then(r => r.json())
     .then(m => {
       document.getElementById('s-actors').textContent   = m.actors   ?? '—';
       document.getElementById('s-sessions').textContent = m.sessions ?? '—';
-      document.getElementById('s-uptime').textContent   = m.uptime_secs != null
-        ? formatUptime(m.uptime_secs) : '—';
+      document.getElementById('s-uptime').textContent   = m.uptime_secs != null ? formatUptime(m.uptime_secs) : '—';
     })
     .catch(() => {})
     .finally(() => setTimeout(pollMetrics, 5000));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function setStatus(text, cls) {
-  const el = document.getElementById('status');
-  el.textContent = text;
-  el.className = cls;
+function setStatus(text, connected) {
+  const badge = document.getElementById('status-badge');
+  badge.className = connected ? 'connected' : (text === 'error' ? 'error' : '');
+  document.getElementById('status-text').textContent = text;
 }
 
 function log(msg, cls) {
   const el = document.getElementById('log');
   const div = document.createElement('div');
-  div.className = cls || '';
-  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  div.className = `line ${cls || ''}`;
+  div.textContent = `${new Date().toLocaleTimeString()} ${msg}`;
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
-  // Keep at most 100 lines
-  while (el.children.length > 100) el.removeChild(el.firstChild);
+  while (el.children.length > 120) el.removeChild(el.firstChild);
 }
 
-function truncate(s, n) {
-  return s.length > n ? s.slice(0, n) + '…' : s;
-}
+function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
 function formatUptime(secs) {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
   const s = secs % 60;
-  return `${h}h ${m}m ${s}s`;
+  return h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 </script>
 </body>
