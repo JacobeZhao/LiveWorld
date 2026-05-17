@@ -147,7 +147,10 @@ pub async fn run_ws_server(
         world_snapshot,
     ));
 
-    let limiter = Arc::new(Mutex::new(ConnectionLimiter::new(10))); // max 10 connections per IP
+    // Behind a reverse proxy (HF Spaces, Koyeb, etc.) all connections share
+    // the proxy's IP. Raise the per-IP ceiling high enough to not block
+    // legitimate users; rely on the 20 cmd/s per-session rate limiter instead.
+    let limiter = Arc::new(Mutex::new(ConnectionLimiter::new(10_000)));
 
     loop {
         match listener.accept().await {
@@ -344,12 +347,14 @@ async fn handle_connection(
     engine: SharedEngine,
 ) {
     // Peek to decide: WebSocket upgrade or plain HTTP.
-    let mut peek = [0u8; 512];
+    // Use 4096 bytes — Cloudflare and other proxies add many headers that can
+    // push "Upgrade: websocket" past a smaller peek window.
+    let mut peek = [0u8; 4096];
     let n = stream.peek(&mut peek).await.unwrap_or(0);
-    let is_ws = std::str::from_utf8(&peek[..n])
+    let lower = std::str::from_utf8(&peek[..n])
         .unwrap_or("")
-        .to_ascii_lowercase()
-        .contains("upgrade: websocket");
+        .to_ascii_lowercase();
+    let is_ws = lower.contains("upgrade: websocket") || lower.contains("upgrade:websocket");
 
     if !is_ws {
         serve_http(stream, engine).await;
@@ -372,9 +377,19 @@ async fn handle_connection(
 
     metrics::inc_ws_connections();
     let out_task = tokio::spawn(async move {
-        while let Some(bytes) = out_rx.recv().await {
-            if ws_sink.send(Message::Binary(bytes)).await.is_err() {
-                break;
+        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                bytes = out_rx.recv() => {
+                    match bytes {
+                        Some(b) => { if ws_sink.send(Message::Binary(b)).await.is_err() { break; } }
+                        None => break,
+                    }
+                }
+                _ = ping_interval.tick() => {
+                    if ws_sink.send(Message::Ping(vec![])).await.is_err() { break; }
+                }
             }
         }
     });
