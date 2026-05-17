@@ -50,6 +50,8 @@ async fn test_create_actor_returns_id() {
         backstory: "A test robot".to_string(),
         model: LlmModel::Mock,
         position: Position::new(100.0, 100.0),
+        role: None,
+        faction: None,
     };
     let json = serde_json::to_string(&cmd).unwrap();
     ws.send(Message::Text(json.into())).await.unwrap();
@@ -80,6 +82,8 @@ async fn test_move_actor() {
         backstory: "Likes to walk".to_string(),
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
+        role: None,
+        faction: None,
     };
     ws.send(Message::Text(
         serde_json::to_string(&create).unwrap().into(),
@@ -124,6 +128,8 @@ async fn test_duplicate_actor_rejected() {
         backstory: "Lives twice".to_string(),
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
+        role: None,
+        faction: None,
     };
 
     // First creation succeeds.
@@ -164,6 +170,8 @@ async fn test_name_too_long_rejected() {
         backstory: "test".to_string(),
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
+        role: None,
+        faction: None,
     };
     ws.send(Message::Text(
         serde_json::to_string(&create).unwrap().into(),
@@ -196,6 +204,8 @@ async fn test_rate_limit_enforced() {
         backstory: "test".to_string(),
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
+        role: None,
+        faction: None,
     };
     ws.send(Message::Text(
         serde_json::to_string(&create).unwrap().into(),

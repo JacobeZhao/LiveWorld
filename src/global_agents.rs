@@ -333,6 +333,12 @@ mod tests {
                 cell: GridCell(0, 0),
                 tick: 0,
                 last_utterance: None,
+                role: crate::types::ActorRole::Wanderer,
+                faction: crate::types::Faction::Neutral,
+                hp: 80,
+                max_hp: 80,
+                xp: 0,
+                level: 1,
             };
             s.insert(state.id, state);
         }

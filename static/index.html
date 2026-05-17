@@ -8,266 +8,117 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:       #080b14;
-  --surface:  rgba(15, 20, 40, 0.85);
-  --border:   rgba(120, 100, 255, 0.2);
-  --accent:   #7c6fff;
-  --gold:     #f0c060;
-  --green:    #40e0a0;
-  --red:      #ff5566;
-  --text:     #d0d8f0;
-  --muted:    #6070a0;
-  --radius:   12px;
+  --bg:      #080b14;
+  --surface: rgba(15,20,40,0.85);
+  --border:  rgba(120,100,255,0.2);
+  --accent:  #7c6fff;
+  --gold:    #f0c060;
+  --green:   #40e0a0;
+  --red:     #ff5566;
+  --text:    #d0d8f0;
+  --muted:   #6070a0;
+  --radius:  12px;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  font-weight: 300;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-weight:300;display:flex;flex-direction:column;height:100vh;overflow:hidden}
 
-/* ── Header ── */
-header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 20px;
-  background: rgba(8, 11, 20, 0.95);
-  border-bottom: 1px solid var(--border);
-  z-index: 10;
-  flex-shrink: 0;
-}
-.logo {
-  font-family: 'Cinzel', serif;
-  font-size: 1.15rem;
-  font-weight: 600;
-  background: linear-gradient(90deg, var(--accent), var(--gold));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: 0.05em;
-}
-.logo-sub {
-  font-size: 0.65rem;
-  color: var(--muted);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  -webkit-text-fill-color: var(--muted);
-}
-#status-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.72rem;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.03);
-  transition: all 0.3s;
-}
-#status-badge .dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
-  transition: all 0.3s;
-}
-#status-badge.connected { border-color: rgba(64,224,160,0.4); }
-#status-badge.connected .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
-#status-badge.error { border-color: rgba(255,85,102,0.4); }
-#status-badge.error .dot { background: var(--red); }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-#tick-counter { margin-left: auto; font-size: 0.68rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Header */
+header{display:flex;align-items:center;gap:14px;padding:10px 20px;background:rgba(8,11,20,.95);border-bottom:1px solid var(--border);z-index:10;flex-shrink:0}
+.logo{font-family:'Cinzel',serif;font-size:1.15rem;font-weight:600;background:linear-gradient(90deg,var(--accent),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.05em}
+.logo-sub{font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;-webkit-text-fill-color:var(--muted)}
+#status-badge{display:flex;align-items:center;gap:6px;font-size:.72rem;padding:4px 10px;border-radius:20px;border:1px solid var(--border);background:rgba(255,255,255,.03);transition:all .3s}
+#status-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);transition:all .3s}
+#status-badge.connected{border-color:rgba(64,224,160,.4)}
+#status-badge.connected .dot{background:var(--green);box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+#status-badge.error{border-color:rgba(255,85,102,.4)}
+#status-badge.error .dot{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#tick-counter{margin-left:auto;font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums}
 
-/* ── Layout ── */
-main { display: flex; flex: 1; overflow: hidden; }
+/* Layout */
+main{display:flex;flex:1;overflow:hidden}
 
-/* ── Sidebar ── */
-#sidebar {
-  width: 280px;
-  flex-shrink: 0;
-  background: var(--surface);
-  backdrop-filter: blur(20px);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  gap: 14px;
-  overflow-y: auto;
-}
-.panel {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.panel-title {
-  font-family: 'Cinzel', serif;
-  font-size: 0.7rem;
-  color: var(--gold);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-bottom: 2px;
-}
-label {
-  font-size: 0.68rem;
-  color: var(--muted);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  display: block;
-  margin-bottom: 4px;
-}
-input, select, textarea {
-  width: 100%;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  padding: 7px 10px;
-  font-size: 0.82rem;
-  font-family: 'Inter', sans-serif;
-  transition: border-color 0.2s;
-  outline: none;
-}
-input:focus, select:focus, textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(124,111,255,0.15);
-}
-select option { background: #0f1428; }
-.field { display: flex; flex-direction: column; }
+/* Sidebar */
+#sidebar{width:280px;flex-shrink:0;background:var(--surface);backdrop-filter:blur(20px);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px;gap:14px;overflow-y:auto}
+.panel{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel-title{font-family:'Cinzel',serif;font-size:.7rem;color:var(--gold);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px}
+label{font-size:.68rem;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:4px}
+input,select{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 10px;font-size:.82rem;font-family:'Inter',sans-serif;transition:border-color .2s;outline:none}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,111,255,.15)}
+select option{background:#0f1428}
+.field{display:flex;flex-direction:column}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 
-/* ── Buttons ── */
-.btn-primary {
-  background: linear-gradient(135deg, #6a5fff, #9a6fff);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 9px 16px;
-  cursor: pointer;
-  font-family: 'Cinzel', serif;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-  width: 100%;
-  transition: all 0.2s;
-  box-shadow: 0 2px 12px rgba(106,95,255,0.35);
-}
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(106,95,255,0.5);
-}
-.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; }
+/* Buttons */
+.btn-primary{background:linear-gradient(135deg,#6a5fff,#9a6fff);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-family:'Cinzel',serif;font-size:.8rem;letter-spacing:.05em;width:100%;transition:all .2s;box-shadow:0 2px 12px rgba(106,95,255,.35)}
+.btn-primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 20px rgba(106,95,255,.5)}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-secondary{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:8px 16px;cursor:pointer;font-family:'Inter',sans-serif;font-size:.78rem;width:100%;transition:all .2s}
+.btn-secondary:hover:not(:disabled){background:rgba(255,85,102,.1);border-color:rgba(255,85,102,.4);color:var(--red)}
+.btn-secondary:disabled{opacity:.25;cursor:not-allowed}
 
-.btn-secondary {
-  background: rgba(255,255,255,0.05);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-family: 'Inter', sans-serif;
-  font-size: 0.78rem;
-  width: 100%;
-  transition: all 0.2s;
-}
-.btn-secondary:hover:not(:disabled) { background: rgba(255,85,102,0.1); border-color: rgba(255,85,102,0.4); color: var(--red); }
-.btn-secondary:disabled { opacity: 0.25; cursor: not-allowed; }
+/* Chat */
+.chat-row{display:flex;gap:6px}
+.chat-row input{flex:1}
+.chat-send{background:rgba(124,111,255,.2);border:1px solid rgba(124,111,255,.35);color:var(--accent);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:1rem;transition:all .2s;flex-shrink:0}
+.chat-send:hover{background:rgba(124,111,255,.35)}
 
-/* ── Chat ── */
-.chat-row { display: flex; gap: 6px; }
-.chat-row input { flex: 1; }
-.chat-send {
-  background: rgba(124,111,255,0.2);
-  border: 1px solid rgba(124,111,255,0.35);
-  color: var(--accent);
-  border-radius: 8px;
-  padding: 7px 12px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-.chat-send:hover { background: rgba(124,111,255,0.35); }
+/* Progress bars */
+.bar-row{display:flex;flex-direction:column;gap:3px}
+.bar-label{display:flex;justify-content:space-between;font-size:.65rem;color:var(--muted)}
+.bar-track{height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .4s ease}
+.bar-hp{background:linear-gradient(90deg,#ff5566,#40e0a0)}
+.bar-xp{background:linear-gradient(90deg,#7c6fff,#f0c060)}
 
-/* ── Stats ── */
-#stats {
-  font-size: 0.72rem;
-  color: var(--muted);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: auto;
-}
-.stat-item {
-  background: rgba(0,0,0,0.2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  text-align: center;
-}
-.stat-value { font-size: 1.1rem; font-weight: 500; color: var(--text); display: block; }
-.stat-label { font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.stat-item.full { grid-column: 1 / -1; }
+/* Player status */
+#player-status{font-size:.72rem}
+.status-level{font-family:'Cinzel',serif;font-size:1rem;color:var(--gold);text-align:center;margin-bottom:8px}
 
-/* ── Canvas ── */
-#canvas-container { flex: 1; position: relative; overflow: hidden; }
-canvas { display: block; cursor: crosshair; }
+/* Territory panel */
+.zone-row{display:grid;grid-template-columns:1fr auto;align-items:center;font-size:.68rem;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.zone-row:last-child{border-bottom:none}
+.zone-name{color:var(--muted)}
+.zone-badge{font-size:.75rem;padding:1px 6px;border-radius:4px;font-weight:500}
 
-/* ── Event Log ── */
-#log {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  width: 340px;
-  max-height: 140px;
-  overflow-y: auto;
-  background: rgba(8,11,20,0.88);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 0.7rem;
-  color: var(--muted);
-  scrollbar-width: thin;
-}
-#log::-webkit-scrollbar { width: 3px; }
-#log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-#log .line { margin-bottom: 3px; line-height: 1.4; }
-#log .evt { color: var(--accent); }
-#log .err { color: var(--red); }
-#log .chat { color: #a5e8ff; }
+/* Stats */
+#stats{font-size:.72rem;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:auto;flex-shrink:0}
+.stat-item{background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center}
+.stat-value{font-size:1.1rem;font-weight:500;color:var(--text);display:block}
+.stat-label{font-size:.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.stat-item.full{grid-column:1/-1}
 
-/* ── Minimap ── */
-#minimap {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  width: 120px;
-  height: 120px;
-  background: rgba(8,11,20,0.88);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
+/* Canvas */
+#canvas-container{flex:1;position:relative;overflow:hidden}
+canvas{display:block;cursor:crosshair}
 
-/* ── Tooltip / Help ── */
-#help-hint {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  font-size: 0.65rem;
-  color: var(--muted);
-  background: rgba(8,11,20,0.7);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 5px 9px;
-}
+/* Event log */
+#log{position:absolute;bottom:12px;left:12px;width:360px;max-height:140px;overflow-y:auto;background:rgba(8,11,20,.88);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-size:.7rem;color:var(--muted);scrollbar-width:thin}
+#log::-webkit-scrollbar{width:3px}
+#log::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+#log .line{margin-bottom:3px;line-height:1.4}
+#log .evt{color:var(--accent)}
+#log .err{color:var(--red)}
+#log .chat{color:#a5e8ff}
+#log .combat{color:#ff9966}
+#log .capture{color:#aaff88}
+#log .death{color:#ff5566}
+#log .levelup{color:#f0c060}
+
+/* Minimap */
+#minimap{position:absolute;bottom:12px;right:12px;width:130px;height:130px;background:rgba(8,11,20,.88);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+
+/* World event banner */
+#banner{position:absolute;bottom:160px;left:50%;transform:translateX(-50%) translateY(20px);max-width:520px;padding:10px 20px;border-radius:10px;font-family:'Cinzel',serif;font-size:.85rem;letter-spacing:.04em;text-align:center;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;z-index:20;white-space:nowrap;border:1px solid;backdrop-filter:blur(10px)}
+#banner.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+#banner.combat{background:rgba(80,10,10,.9);border-color:rgba(255,85,102,.5);color:#ffaaaa}
+#banner.event{background:rgba(40,30,10,.9);border-color:rgba(240,192,96,.4);color:var(--gold)}
+#banner.capture{background:rgba(10,40,10,.9);border-color:rgba(100,220,80,.4);color:#aaff88}
+#banner.death{background:rgba(30,10,40,.9);border-color:rgba(160,80,255,.4);color:#cc88ff}
+#banner.levelup{background:rgba(40,30,5,.9);border-color:rgba(240,192,96,.6);color:#ffe080}
+
+/* Help hint */
+#help-hint{position:absolute;top:10px;right:10px;font-size:.65rem;color:var(--muted);background:rgba(8,11,20,.7);border:1px solid var(--border);border-radius:8px;padding:5px 9px}
 </style>
 </head>
 <body>
@@ -289,37 +140,83 @@ canvas { display: block; cursor: crosshair; }
 
     <div class="panel">
       <div class="panel-title">⚙ Your Character</div>
-
       <div class="field">
         <label>Name</label>
         <input id="inp-name" value="Wanderer" maxlength="64" placeholder="Your hero's name">
       </div>
       <div class="field">
         <label>Personality</label>
-        <input id="inp-personality" value="curious explorer" maxlength="256" placeholder="brave, wise, mysterious…">
+        <input id="inp-personality" value="curious explorer" maxlength="256">
       </div>
       <div class="field">
         <label>Backstory</label>
-        <input id="inp-backstory" value="A traveler from distant lands" maxlength="512" placeholder="Where are you from?">
+        <input id="inp-backstory" value="A traveler from distant lands" maxlength="512">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Role</label>
+          <select id="inp-role">
+            <option value="Wanderer">🗺 Wanderer</option>
+            <option value="Knight">⚔ Knight</option>
+            <option value="Mage">✨ Mage</option>
+            <option value="Scholar">📚 Scholar</option>
+            <option value="Merchant">💰 Merchant</option>
+            <option value="Bard">🎵 Bard</option>
+            <option value="Guard">🛡 Guard</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Faction</label>
+          <select id="inp-faction">
+            <option value="Neutral">⚪ Neutral</option>
+            <option value="Empire">🔴 Empire</option>
+            <option value="Alliance">🔵 Alliance</option>
+            <option value="WanderersGuild">🟣 Wanderers</option>
+            <option value="MagesCircle">🩵 Mages</option>
+          </select>
+        </div>
       </div>
       <div class="field">
         <label>AI Model</label>
         <select id="inp-model">
-          <option value="Mock" selected>✦ Mock (instant, free)</option>
+          <option value="Mock" selected>✦ Mock (instant)</option>
           <option value="Gpt4o">⚡ GPT-4o</option>
           <option value="ClaudeSonnet">✧ Claude Sonnet</option>
         </select>
       </div>
-
       <button class="btn-primary" id="btn-join" onclick="joinWorld()">Enter the World</button>
       <button class="btn-secondary" id="btn-leave" onclick="leaveWorld()" disabled>Leave World</button>
+    </div>
+
+    <div class="panel" id="player-panel" style="display:none">
+      <div class="panel-title">⚡ Your Status</div>
+      <div class="status-level" id="player-level">Level 1</div>
+      <div class="bar-row">
+        <div class="bar-label"><span>HP</span><span id="player-hp-text">—</span></div>
+        <div class="bar-track"><div class="bar-fill bar-hp" id="player-hp-bar" style="width:100%"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>XP to next level</span><span id="player-xp-text">—</span></div>
+        <div class="bar-track"><div class="bar-fill bar-xp" id="player-xp-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">🗺 Territory</div>
+      <div id="territory-list">
+        <div class="zone-row"><span class="zone-name">N. Forest</span><span class="zone-badge" id="tz-NorthForest"></span></div>
+        <div class="zone-row"><span class="zone-name">E. Desert</span><span class="zone-badge" id="tz-EastDesert"></span></div>
+        <div class="zone-row"><span class="zone-name">W. Coast</span><span class="zone-badge" id="tz-WestCoast"></span></div>
+        <div class="zone-row"><span class="zone-name">S. Plains</span><span class="zone-badge" id="tz-SouthPlain"></span></div>
+        <div class="zone-row"><span class="zone-name">Central City</span><span class="zone-badge" id="tz-CentralCity"></span></div>
+        <div class="zone-row"><span class="zone-name">Mtn. Border</span><span class="zone-badge" id="tz-MountainBorder"></span></div>
+      </div>
     </div>
 
     <div class="panel">
       <div class="panel-title">💬 Chat</div>
       <div class="chat-row">
-        <input id="inp-chat" placeholder="Say something to the world…" maxlength="300"
-               onkeydown="if(event.key==='Enter')sendChat()">
+        <input id="inp-chat" placeholder="Say something…" maxlength="300" onkeydown="if(event.key==='Enter')sendChat()">
         <button class="chat-send" onclick="sendChat()" title="Send">➤</button>
       </div>
     </div>
@@ -334,7 +231,7 @@ canvas { display: block; cursor: crosshair; }
         <span class="stat-label">Online</span>
       </div>
       <div class="stat-item full">
-        <span class="stat-value" id="s-uptime" style="font-size:0.85rem">—</span>
+        <span class="stat-value" id="s-uptime" style="font-size:.85rem">—</span>
         <span class="stat-label">Server Uptime</span>
       </div>
     </div>
@@ -343,8 +240,9 @@ canvas { display: block; cursor: crosshair; }
 
   <div id="canvas-container">
     <canvas id="world"></canvas>
-    <div id="log"></div>
     <canvas id="minimap"></canvas>
+    <div id="log"></div>
+    <div id="banner"></div>
     <div id="help-hint">Click to move · Scroll to pan · Ctrl+Scroll to zoom</div>
   </div>
 </main>
@@ -362,12 +260,103 @@ function getUrls() {
 const { ws: WS_URL, http: HTTP_URL } = getUrls();
 const WORLD_W = 10000, WORLD_H = 10000;
 
+// ── Visual constants ─────────────────────────────────────────────────────────
+const FACTION_COLOR = {
+  Empire:         '#ff4444',
+  Alliance:       '#4488ff',
+  WanderersGuild: '#aa44ff',
+  MagesCircle:    '#44ffee',
+  Neutral:        '#888888',
+};
+const FACTION_EMOJI = {
+  Empire: '🔴', Alliance: '🔵', WanderersGuild: '🟣', MagesCircle: '🩵', Neutral: '⚪',
+};
+const ROLE_STYLE = {
+  Wanderer: { emoji: '🗺', color: '#40e0a0' },
+  Merchant: { emoji: '💰', color: '#f0c060' },
+  Scholar:  { emoji: '📚', color: '#88aaff' },
+  Knight:   { emoji: '⚔',  color: '#ff8844' },
+  Mage:     { emoji: '✨', color: '#cc88ff' },
+  Bard:     { emoji: '🎵', color: '#ff88cc' },
+  Guard:    { emoji: '🛡',  color: '#aaaaaa' },
+};
+
+// Zones drawn back-to-front (Wilderness first, most specific last)
+const ZONES = [
+  { id: 'Wilderness',     x: 0,    y: 0,    w: 10000, h: 10000, bg: '#0d1018' },
+  { id: 'NorthForest',    x: 0,    y: 0,    w: 4000,  h: 4000,  bg: '#0d1f12' },
+  { id: 'EastDesert',     x: 6000, y: 0,    w: 4000,  h: 4000,  bg: '#1f1808' },
+  { id: 'WestCoast',      x: 0,    y: 6000, w: 3000,  h: 4000,  bg: '#08121e' },
+  { id: 'SouthPlain',     x: 3000, y: 6000, w: 4000,  h: 4000,  bg: '#141e08' },
+  { id: 'MountainBorder', x: 7000, y: 5000, w: 3000,  h: 5000,  bg: '#181414' },
+  { id: 'CentralCity',    x: 3500, y: 3500, w: 3000,  h: 3000,  bg: '#141418' },
+];
+
+const ZONE_LABELS_TO_ID = {
+  'Northern Forest': 'NorthForest',
+  'Eastern Desert':  'EastDesert',
+  'Western Coast':   'WestCoast',
+  'Southern Plains': 'SouthPlain',
+  'Central City':    'CentralCity',
+  'Mountain Border': 'MountainBorder',
+  'Wilderness':      'Wilderness',
+};
+
+// Landmarks: {x, y, label, emoji}
+const LANDMARKS = [
+  { x: 2000, y: 1500, emoji: '🌲', label: 'Elderwood' },
+  { x: 500,  y: 500,  emoji: '🏰', label: 'Empire Fort' },
+  { x: 3000, y: 800,  emoji: '⛺', label: 'N. Camp' },
+  { x: 7500, y: 1000, emoji: '🏜', label: 'Dust Oasis' },
+  { x: 9000, y: 2500, emoji: '🗿', label: 'Stone Idol' },
+  { x: 8200, y: 500,  emoji: '💀', label: 'Bone Peak' },
+  { x: 1000, y: 7500, emoji: '⚓', label: 'Harbor' },
+  { x: 2000, y: 9000, emoji: '🐚', label: 'Tidal Keep' },
+  { x: 500,  y: 8500, emoji: '🌊', label: 'Coral Cove' },
+  { x: 4000, y: 8000, emoji: '🌾', label: 'Harvest Vale' },
+  { x: 5500, y: 9500, emoji: '🏡', label: 'S. Village' },
+  { x: 6500, y: 7500, emoji: '🌿', label: 'Green Mire' },
+  { x: 8000, y: 6000, emoji: '⛰', label: 'Iron Ridge' },
+  { x: 9500, y: 7500, emoji: '🏔', label: 'Summit' },
+  { x: 8500, y: 9000, emoji: '🗡',  label: 'War Scar' },
+  { x: 5000, y: 5000, emoji: '🏙', label: 'Central City' },
+  { x: 4200, y: 4200, emoji: '🏛', label: 'Grand Hall' },
+  { x: 6000, y: 4500, emoji: '🔮', label: 'Mage Tower' },
+  { x: 4800, y: 6200, emoji: '⚜',  label: 'Alliance HQ' },
+  { x: 5200, y: 3800, emoji: '👑', label: 'Empire Gate' },
+  { x: 1500, y: 3000, emoji: '🦌', label: 'Deer Glade' },
+  { x: 3500, y: 2000, emoji: '🏹', label: 'Ranger Post' },
+  { x: 7000, y: 3000, emoji: '☀',  label: 'Sun Shrine' },
+  { x: 2500, y: 5500, emoji: '🕌', label: 'Old Temple' },
+  { x: 6800, y: 8500, emoji: '🔱', label: 'Tri-Keep' },
+];
+
+// Roads (pairs of landmark indices)
+const ROADS = [
+  [15,16],[15,17],[15,18],[15,19],[16,21],[17,23],[18,9],[19,2],
+  [0,21],[2,7],[4,13],[9,10],[12,13],[6,7],[6,8],
+];
+
 // ── State ────────────────────────────────────────────────────────────────────
 let ws = null, myActorId = null;
 let actors = new Map();
 let canvas, ctx, mm, mctx, cw, ch;
 let camera = { x: 0, y: 0, scale: 0.08 };
 let stars = [];
+let combatFlashes = []; // { x1,y1,x2,y2, born, dur }
+let floatingNums  = []; // { x,y,text,born,dy }
+let bannerTimer   = null;
+
+// Territory state (mirrors Rust backend initial state)
+const territory = {
+  NorthForest:    'Empire',
+  EastDesert:     'WanderersGuild',
+  WestCoast:      'Alliance',
+  SouthPlain:     'Alliance',
+  CentralCity:    'Neutral',
+  MountainBorder: 'Empire',
+  Wilderness:     'Neutral',
+};
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
@@ -375,12 +364,13 @@ window.addEventListener('load', () => {
   ctx    = canvas.getContext('2d');
   mm     = document.getElementById('minimap');
   mctx   = mm.getContext('2d');
-  mm.width = mm.height = 120;
+  mm.width = mm.height = 130;
   resize();
   window.addEventListener('resize', resize);
   canvas.addEventListener('click', onCanvasClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   generateStars();
+  renderTerritoryPanel();
   render();
   pollMetrics();
   connectWS();
@@ -390,15 +380,15 @@ function resize() {
   const c = document.getElementById('canvas-container');
   cw = c.clientWidth; ch = c.clientHeight;
   canvas.width = cw; canvas.height = ch;
-  camera.x = cw / 2; camera.y = ch / 2;
+  // Center the world (5000, 5000) in the viewport
+  camera.x = cw / 2 - 5000 * camera.scale;
+  camera.y = ch / 2 - 5000 * camera.scale;
 }
 
 function generateStars() {
-  stars = Array.from({ length: 180 }, () => ({
-    x: Math.random() * 10000,
-    y: Math.random() * 10000,
-    r: Math.random() * 1.2 + 0.2,
-    a: Math.random() * 0.6 + 0.1,
+  stars = Array.from({ length: 150 }, () => ({
+    x: Math.random() * 10000, y: Math.random() * 10000,
+    r: Math.random() * 1.2 + 0.2, a: Math.random() * 0.5 + 0.1,
   }));
 }
 
@@ -414,6 +404,7 @@ function connectWS() {
     log('Disconnected — reconnecting…', 'err');
     document.getElementById('btn-join').disabled = false;
     document.getElementById('btn-leave').disabled = true;
+    document.getElementById('player-panel').style.display = 'none';
     setTimeout(connectWS, 3000);
   };
   ws.onerror = () => setStatus('error', false);
@@ -430,26 +421,88 @@ function handleMessage(msg) {
       log(`✦ Entered world as ${document.getElementById('inp-name').value} (id ${myActorId})`, 'evt');
       document.getElementById('btn-join').disabled = true;
       document.getElementById('btn-leave').disabled = false;
+      document.getElementById('player-panel').style.display = 'flex';
       break;
+
     case 'WorldDelta':
       document.getElementById('tick-counter').textContent = `tick ${msg.tick}`;
       for (const a of msg.updates) {
         const prev = actors.get(a.id);
-        actors.set(a.id, { id: a.id, name: a.name, x: a.position.x, y: a.position.y,
-          utterance: a.last_utterance, px: prev?.x ?? a.position.x, py: prev?.y ?? a.position.y });
+        actors.set(a.id, {
+          id: a.id, name: a.name,
+          x:  prev ? lerp(prev.x, prev.tx, 0.4) : a.position.x,
+          y:  prev ? lerp(prev.y, prev.ty, 0.4) : a.position.y,
+          tx: a.position.x, ty: a.position.y,
+          utterance: a.last_utterance,
+          role:    a.role    ?? 'Wanderer',
+          faction: a.faction ?? 'Neutral',
+          hp:      a.hp      ?? 80,
+          max_hp:  a.max_hp  ?? 80,
+          xp:      a.xp      ?? 0,
+          level:   a.level   ?? 1,
+        });
         if (a.last_utterance && a.last_utterance !== prev?.utterance)
           log(`[${a.name}] ${a.last_utterance}`, 'chat');
+        if (a.id === myActorId) updatePlayerStatus(a);
       }
       for (const id of msg.removed) actors.delete(id);
       break;
+
+    case 'WorldEvent':
+      handleWorldEvent(msg.message);
+      break;
+
     case 'Error':
       log(`⚠ ${msg.message}`, 'err');
       if (msg.code === 409) {
         document.getElementById('btn-join').disabled = true;
         document.getElementById('btn-leave').disabled = false;
+        document.getElementById('player-panel').style.display = 'flex';
       }
       break;
   }
+}
+
+function handleWorldEvent(message) {
+  // Classify and display
+  let cls = 'evt', bannerCls = 'event';
+  if (message.startsWith('⚔')) { cls = 'combat'; bannerCls = 'combat'; }
+  else if (message.startsWith('🏴')) { cls = 'capture'; bannerCls = 'capture'; }
+  else if (message.startsWith('💀')) { cls = 'death';   bannerCls = 'death'; }
+  else if (message.startsWith('⬆')) { cls = 'levelup'; bannerCls = 'levelup'; }
+  log(message, cls);
+  showBanner(message, bannerCls);
+
+  // Parse combat for flash animation: "⚔ X strikes Y for N damage!"
+  const combatMatch = message.match(/^⚔ (.+) strikes (.+) for (\d+) damage!/);
+  if (combatMatch) {
+    const [, atkName, defName, dmg] = combatMatch;
+    const atk = findActorByName(atkName);
+    const def = findActorByName(defName);
+    if (atk && def) {
+      const now = performance.now();
+      combatFlashes.push({ x1: atk.x, y1: atk.y, x2: def.x, y2: def.y, born: now, dur: 500 });
+      floatingNums.push({ x: def.tx, y: def.ty - 20, text: `-${dmg}`, born: now, dy: 0 });
+    }
+  }
+
+  // Parse territory capture: "🏴 Faction has captured Zone Label!"
+  const captureMatch = message.match(/^🏴 (\w+) has captured (.+)!$/);
+  if (captureMatch) {
+    const [, faction, zoneLabel] = captureMatch;
+    const zoneId = ZONE_LABELS_TO_ID[zoneLabel];
+    if (zoneId && territory[zoneId] !== undefined) {
+      territory[zoneId] = faction;
+      renderTerritoryPanel();
+    }
+  }
+}
+
+function findActorByName(name) {
+  for (const a of actors.values()) {
+    if (a.name.toLowerCase() === name.toLowerCase()) return a;
+  }
+  return null;
 }
 
 function send(obj) {
@@ -460,12 +513,14 @@ function send(obj) {
 function joinWorld() {
   const name = document.getElementById('inp-name').value.trim() || 'Wanderer';
   send({
-    type: 'CreateActor',
+    type:        'CreateActor',
     name,
     personality: document.getElementById('inp-personality').value.trim(),
     backstory:   document.getElementById('inp-backstory').value.trim(),
     model:       document.getElementById('inp-model').value,
-    position:    { x: 4000 + Math.random() * 2000, y: 4000 + Math.random() * 2000 }
+    position:    { x: 4000 + Math.random() * 2000, y: 4000 + Math.random() * 2000 },
+    role:        document.getElementById('inp-role').value,
+    faction:     document.getElementById('inp-faction').value,
   });
 }
 
@@ -475,6 +530,7 @@ function leaveWorld() {
   myActorId = null;
   document.getElementById('btn-join').disabled = false;
   document.getElementById('btn-leave').disabled = true;
+  document.getElementById('player-panel').style.display = 'none';
 }
 
 function sendChat() {
@@ -510,32 +566,34 @@ let frame = 0;
 function render() {
   requestAnimationFrame(render);
   frame++;
+  const now = performance.now();
 
-  // Background gradient
-  const grad = ctx.createRadialGradient(cw/2, ch/2, 0, cw/2, ch/2, Math.max(cw, ch));
-  grad.addColorStop(0,   '#0e1225');
-  grad.addColorStop(1,   '#080b14');
-  ctx.fillStyle = grad;
+  // Background
+  ctx.fillStyle = '#080b14';
   ctx.fillRect(0, 0, cw, ch);
 
-  // Stars
+  // Stars (parallax)
   for (const s of stars) {
-    const sx = camera.x + s.x * camera.scale;
-    const sy = camera.y + s.y * camera.scale;
+    const sx = camera.x + s.x * camera.scale * 0.3;
+    const sy = camera.y + s.y * camera.scale * 0.3;
     if (sx < -2 || sx > cw + 2 || sy < -2 || sy > ch + 2) continue;
     ctx.globalAlpha = s.a * (0.7 + 0.3 * Math.sin(frame * 0.02 + s.x));
     ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(sx, sy, s.r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, s.r, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
 
+  // Zones
+  drawZones();
+
+  // Roads
+  drawRoads();
+
   // Grid
-  ctx.strokeStyle = 'rgba(120,100,255,0.08)';
+  ctx.strokeStyle = 'rgba(120,100,255,0.06)';
   ctx.lineWidth = 0.8;
   const gs = 1000 * camera.scale;
-  if (gs > 8) {
+  if (gs > 6) {
     for (let gx = ((camera.x % gs) + gs) % gs; gx < cw; gx += gs) {
       ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ch); ctx.stroke();
     }
@@ -544,7 +602,7 @@ function render() {
     }
   }
 
-  // World boundary glow
+  // World boundary
   const bx0 = camera.x, by0 = camera.y;
   const bx1 = camera.x + WORLD_W * camera.scale;
   const by1 = camera.y + WORLD_H * camera.scale;
@@ -552,59 +610,50 @@ function render() {
   ctx.lineWidth = 2;
   ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0);
 
+  // Landmarks
+  drawLandmarks();
+
+  // Combat flashes
+  combatFlashes = combatFlashes.filter(f => now - f.born < f.dur);
+  for (const f of combatFlashes) {
+    const t = (now - f.born) / f.dur;
+    const alpha = (1 - t) * 0.9;
+    const sx1 = camera.x + f.x1 * camera.scale;
+    const sy1 = camera.y + f.y1 * camera.scale;
+    const sx2 = camera.x + f.x2 * camera.scale;
+    const sy2 = camera.y + f.y2 * camera.scale;
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#ff4444';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // Lerp actor positions
+  for (const a of actors.values()) {
+    a.x = lerp(a.x, a.tx, 0.12);
+    a.y = lerp(a.y, a.ty, 0.12);
+  }
+
   // Actors
   for (const a of actors.values()) {
-    const sx = camera.x + a.x * camera.scale;
-    const sy = camera.y + a.y * camera.scale;
-    const isMe = a.id === myActorId;
-    const r = isMe ? 9 : 6;
-    const color = isMe ? '#7c6fff' : '#40e0a0';
-    const glow  = isMe ? 'rgba(124,111,255,0.4)' : 'rgba(64,224,160,0.3)';
+    drawActor(a);
+  }
 
-    // Glow
-    ctx.beginPath();
-    ctx.arc(sx, sy, r + 8, 0, Math.PI * 2);
-    const g = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, r + 8);
-    g.addColorStop(0, glow);
-    g.addColorStop(1, 'transparent');
-    ctx.fillStyle = g;
-    ctx.fill();
-
-    // Circle
-    ctx.beginPath();
-    ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    if (isMe) {
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-    }
-
-    // Name
-    ctx.font = `${isMe ? 500 : 400} ${isMe ? 11 : 10}px Inter, sans-serif`;
+  // Floating damage numbers
+  floatingNums = floatingNums.filter(n => now - n.born < 1200);
+  for (const n of floatingNums) {
+    const t = (now - n.born) / 1200;
+    const sx = camera.x + n.x * camera.scale;
+    const sy = camera.y + (n.y - t * 40) * camera.scale;
+    ctx.globalAlpha = 1 - t;
+    ctx.font = `bold ${Math.round(14 + 4 * (1 - t))}px Inter, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillText(a.name, sx + 1, sy - r - 5);
-    ctx.fillStyle = isMe ? '#d0d8f0' : '#a0c0b0';
-    ctx.fillText(a.name, sx, sy - r - 6);
-
-    // Utterance bubble
-    if (a.utterance) {
-      const txt = truncate(a.utterance, 28);
-      const tw = ctx.measureText(txt).width;
-      const bw = tw + 16, bh = 18, bx = sx - bw / 2, by2 = sy + r + 4;
-      ctx.fillStyle = 'rgba(10,14,30,0.82)';
-      ctx.beginPath();
-      ctx.roundRect(bx, by2, bw, bh, 6);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(160,192,255,0.2)';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-      ctx.fillStyle = '#a5e8ff';
-      ctx.font = '9px Inter, sans-serif';
-      ctx.fillText(txt, sx, by2 + 12);
-    }
+    ctx.fillStyle = '#ff5566';
+    ctx.fillText(n.text, sx, sy);
+    ctx.globalAlpha = 1;
   }
 
   // My coords
@@ -613,36 +662,240 @@ function render() {
     ctx.font = '10px monospace';
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(96,112,160,0.8)';
-    ctx.fillText(`(${me.x.toFixed(0)}, ${me.y.toFixed(0)})`, 12, ch - 12);
+    ctx.fillText(`(${me.tx.toFixed(0)}, ${me.ty.toFixed(0)})`, 12, ch - 12);
   }
 
-  // Minimap
   drawMinimap();
 }
 
+function drawZones() {
+  for (const z of ZONES) {
+    const sx = camera.x + z.x * camera.scale;
+    const sy = camera.y + z.y * camera.scale;
+    const sw = z.w * camera.scale;
+    const sh = z.h * camera.scale;
+    // Base biome color
+    ctx.fillStyle = z.bg;
+    ctx.fillRect(sx, sy, sw, sh);
+    // Territory faction tint (alpha 0.12)
+    const owner = territory[z.id];
+    if (owner && FACTION_COLOR[owner] && owner !== 'Neutral') {
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = FACTION_COLOR[owner];
+      ctx.fillRect(sx, sy, sw, sh);
+      ctx.globalAlpha = 1;
+    }
+    // Zone label (only when zoomed out enough and zone is visible)
+    if (camera.scale < 0.25 && sw > 60) {
+      ctx.font = `300 ${Math.min(11, Math.max(7, sw * 0.04))}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(200,210,240,0.25)';
+      ctx.fillText(z.id.replace(/([A-Z])/g, ' $1').trim(), sx + sw / 2, sy + sh / 2);
+    }
+  }
+}
+
+function drawRoads() {
+  ctx.strokeStyle = 'rgba(200,180,120,0.12)';
+  ctx.lineWidth = Math.max(1, camera.scale * 6);
+  ctx.setLineDash([Math.max(2, camera.scale * 8), Math.max(3, camera.scale * 10)]);
+  for (const [i, j] of ROADS) {
+    const a = LANDMARKS[i], b = LANDMARKS[j];
+    const ax = camera.x + a.x * camera.scale;
+    const ay = camera.y + a.y * camera.scale;
+    const bx = camera.x + b.x * camera.scale;
+    const by = camera.y + b.y * camera.scale;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawLandmarks() {
+  if (camera.scale < 0.015) return;
+  const minScale = 0.03;
+  for (const lm of LANDMARKS) {
+    const sx = camera.x + lm.x * camera.scale;
+    const sy = camera.y + lm.y * camera.scale;
+    if (sx < -20 || sx > cw + 20 || sy < -20 || sy > ch + 20) continue;
+
+    const emojiSize = Math.max(8, Math.min(20, camera.scale * 120));
+    ctx.font = `${emojiSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lm.emoji, sx, sy);
+
+    if (camera.scale > minScale) {
+      ctx.font = `300 ${Math.max(7, Math.min(11, camera.scale * 80))}px Inter, sans-serif`;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(200,210,240,0.45)';
+      ctx.fillText(lm.label, sx, sy + emojiSize * 0.7 + 4);
+    }
+  }
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawActor(a) {
+  const sx = camera.x + a.x * camera.scale;
+  const sy = camera.y + a.y * camera.scale;
+  if (sx < -30 || sx > cw + 30 || sy < -30 || sy > ch + 30) return;
+
+  const isMe = a.id === myActorId;
+  const r = isMe ? 10 : 7;
+  const rs = ROLE_STYLE[a.role] ?? ROLE_STYLE.Wanderer;
+  const fc = FACTION_COLOR[a.faction] ?? '#888888';
+
+  // Glow
+  const glow = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, r + 10);
+  glow.addColorStop(0, fc + '44');
+  glow.addColorStop(1, 'transparent');
+  ctx.beginPath(); ctx.arc(sx, sy, r + 10, 0, Math.PI * 2);
+  ctx.fillStyle = glow; ctx.fill();
+
+  // Faction outer ring
+  ctx.beginPath(); ctx.arc(sx, sy, r + 2.5, 0, Math.PI * 2);
+  ctx.strokeStyle = fc;
+  ctx.lineWidth = isMe ? 2.5 : 1.8;
+  ctx.stroke();
+
+  // Role inner circle
+  ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = rs.color;
+  ctx.fill();
+
+  // White outline for me
+  if (isMe) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Role emoji above
+  if (camera.scale > 0.04) {
+    const emojiSz = Math.max(9, Math.min(16, camera.scale * 100));
+    ctx.font = `${emojiSz}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(rs.emoji, sx, sy - r - 3);
+  }
+
+  // Name
+  if (camera.scale > 0.02) {
+    const nameSz = isMe ? 11 : 9;
+    ctx.font = `${isMe ? 500 : 400} ${nameSz}px Inter, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillText(a.name, sx + 1, sy - r - (camera.scale > 0.04 ? 14 : 5));
+    ctx.fillStyle = isMe ? '#d0d8f0' : '#b0c8c0';
+    ctx.fillText(a.name, sx, sy - r - (camera.scale > 0.04 ? 15 : 6));
+  }
+
+  // HP bar below
+  if (camera.scale > 0.03) {
+    const bw = r * 2.8, bh = 3;
+    const bx = sx - bw / 2, by2 = sy + r + 4;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx, by2, bw, bh);
+    const hpRatio = Math.max(0, (a.hp ?? 80) / (a.max_hp ?? 80));
+    const hpColor = hpRatio > 0.6 ? '#40e0a0' : hpRatio > 0.3 ? '#f0c060' : '#ff5566';
+    ctx.fillStyle = hpColor;
+    ctx.fillRect(bx, by2, bw * hpRatio, bh);
+  }
+
+  // Utterance bubble
+  if (a.utterance && camera.scale > 0.05) {
+    const txt = truncate(a.utterance, 26);
+    ctx.font = '9px Inter, sans-serif';
+    const tw = ctx.measureText(txt).width;
+    const bw = tw + 14, bh = 17;
+    const bx = sx - bw / 2, by2 = sy + r + 10;
+    ctx.fillStyle = 'rgba(10,14,30,0.85)';
+    ctx.beginPath(); ctx.roundRect(bx, by2, bw, bh, 5); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,192,255,0.18)';
+    ctx.lineWidth = 0.8; ctx.stroke();
+    ctx.fillStyle = '#a5e8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(txt, sx, by2 + 12);
+  }
+}
+
 function drawMinimap() {
-  const mw = 120, mh = 120;
-  mctx.fillStyle = 'rgba(8,11,20,0.9)';
-  mctx.fillRect(0, 0, mw, mh);
+  const mw = 130, mh = 130;
+  mctx.clearRect(0, 0, mw, mh);
+  // Zone colors on minimap
+  for (const z of ZONES) {
+    const zx = z.x / WORLD_W * mw, zy = z.y / WORLD_H * mh;
+    const zw = z.w / WORLD_W * mw, zh = z.h / WORLD_H * mh;
+    mctx.fillStyle = z.bg;
+    mctx.fillRect(zx, zy, zw, zh);
+    const owner = territory[z.id];
+    if (owner && FACTION_COLOR[owner] && owner !== 'Neutral') {
+      mctx.globalAlpha = 0.18;
+      mctx.fillStyle = FACTION_COLOR[owner];
+      mctx.fillRect(zx, zy, zw, zh);
+      mctx.globalAlpha = 1;
+    }
+  }
+  // Border
   mctx.strokeStyle = 'rgba(124,111,255,0.3)';
   mctx.lineWidth = 1;
   mctx.strokeRect(0.5, 0.5, mw - 1, mh - 1);
-  const sx = mw / WORLD_W, sy = mh / WORLD_H;
+  // Actors
+  const sx = mw / WORLD_W, sy2 = mh / WORLD_H;
   for (const a of actors.values()) {
     const isMe = a.id === myActorId;
+    const fc = FACTION_COLOR[a.faction] ?? '#40e0a0';
     mctx.beginPath();
-    mctx.arc(a.x * sx, a.y * sy, isMe ? 3 : 2, 0, Math.PI * 2);
-    mctx.fillStyle = isMe ? '#7c6fff' : '#40e0a0';
+    mctx.arc(a.x * sx, a.y * sy2, isMe ? 3.5 : 2, 0, Math.PI * 2);
+    mctx.fillStyle = isMe ? '#ffffff' : fc;
     mctx.fill();
   }
   // Viewport rect
   const vx0 = (-camera.x / camera.scale) * sx;
-  const vy0 = (-camera.y / camera.scale) * sy;
+  const vy0 = (-camera.y / camera.scale) * sy2;
   const vw  = (cw / camera.scale) * sx;
-  const vh  = (ch / camera.scale) * sy;
+  const vh  = (ch / camera.scale) * sy2;
   mctx.strokeStyle = 'rgba(240,192,96,0.5)';
   mctx.lineWidth = 0.8;
   mctx.strokeRect(vx0, vy0, vw, vh);
+}
+
+// ── UI Updates ────────────────────────────────────────────────────────────────
+function updatePlayerStatus(a) {
+  const hp = a.hp ?? 80, maxHp = a.max_hp ?? 80;
+  const xp = a.xp ?? 0, lv = a.level ?? 1;
+  const xpInLevel = xp % 100, xpToNext = 100;
+  document.getElementById('player-level').textContent = `Level ${lv} ${ROLE_STYLE[a.role]?.emoji ?? ''}`;
+  document.getElementById('player-hp-text').textContent = `${hp}/${maxHp}`;
+  document.getElementById('player-hp-bar').style.width = `${(hp / maxHp * 100).toFixed(0)}%`;
+  document.getElementById('player-xp-text').textContent = `${xpInLevel}/100`;
+  document.getElementById('player-xp-bar').style.width = `${(xpInLevel / xpToNext * 100).toFixed(0)}%`;
+}
+
+function renderTerritoryPanel() {
+  const zoneKeys = ['NorthForest','EastDesert','WestCoast','SouthPlain','CentralCity','MountainBorder'];
+  for (const id of zoneKeys) {
+    const el = document.getElementById(`tz-${id}`);
+    if (!el) continue;
+    const owner = territory[id] ?? 'Neutral';
+    const color = FACTION_COLOR[owner] ?? '#888888';
+    const emoji = FACTION_EMOJI[owner] ?? '⚪';
+    el.textContent = emoji;
+    el.style.color = color;
+    el.style.borderColor = color + '55';
+    el.style.border = `1px solid ${color}44`;
+  }
+}
+
+function showBanner(text, cls) {
+  const el = document.getElementById('banner');
+  el.textContent = text;
+  el.className = cls;
+  el.classList.add('visible');
+  if (bannerTimer) clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => {
+    el.classList.remove('visible');
+  }, 5000);
 }
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
@@ -659,6 +912,9 @@ function pollMetrics() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
 function setStatus(text, connected) {
   const badge = document.getElementById('status-badge');
   badge.className = connected ? 'connected' : (text === 'error' ? 'error' : '');
@@ -674,8 +930,6 @@ function log(msg, cls) {
   el.scrollTop = el.scrollHeight;
   while (el.children.length > 120) el.removeChild(el.firstChild);
 }
-
-function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
 
 function formatUptime(secs) {
   const h = Math.floor(secs / 3600);

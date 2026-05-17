@@ -82,6 +82,41 @@ impl std::fmt::Display for LlmModel {
     }
 }
 
+// ── Actor role ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum ActorRole {
+    #[default]
+    Wanderer,
+    Merchant,
+    Scholar,
+    Knight,
+    Mage,
+    Bard,
+    Guard,
+}
+
+// ── Faction ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub enum Faction {
+    Empire,
+    Alliance,
+    WanderersGuild,
+    MagesCircle,
+    #[default]
+    Neutral,
+}
+
+impl Faction {
+    pub fn is_hostile_to(&self, other: &Faction) -> bool {
+        matches!(
+            (self, other),
+            (Faction::Empire, Faction::Alliance) | (Faction::Alliance, Faction::Empire)
+        )
+    }
+}
+
 // ── Actor state ───────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +127,8 @@ pub struct ActorSpec {
     pub backstory: String,
     pub model: LlmModel,
     pub position: Position,
+    pub role: ActorRole,
+    pub faction: Faction,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -102,6 +139,12 @@ pub struct ActorState {
     pub cell: GridCell,
     pub tick: u64,
     pub last_utterance: Option<String>,
+    pub role: ActorRole,
+    pub faction: Faction,
+    pub hp: u8,
+    pub max_hp: u8,
+    pub xp: u32,
+    pub level: u8,
 }
 
 // ── World events (Actor → Actor messages) ────────────────────────────────────
@@ -111,6 +154,8 @@ pub enum ActorMessage {
     Move { to: Position },
     Speak { text: String },
     Interact { target: ActorId, action: String },
+    TakeDamage { amount: u8, from_name: String },
+    GainXp { amount: u32 },
     Shutdown,
 }
 
@@ -122,6 +167,14 @@ pub struct StateDelta {
     pub timestamp_ms: u64,
     pub updates: Vec<ActorState>,
     pub removed: Vec<ActorId>,
+}
+
+// ── Session frame (world engine → WS pump) ───────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SessionFrame {
+    Delta(StateDelta),
+    WorldEvent { message: String },
 }
 
 // ── World config ──────────────────────────────────────────────────────────────
@@ -164,6 +217,8 @@ pub enum ClientCommand {
         backstory: String,
         model: LlmModel,
         position: Position,
+        role: Option<ActorRole>,
+        faction: Option<Faction>,
     },
     MoveActor {
         actor_id: ActorId,
@@ -185,6 +240,7 @@ pub enum ClientCommand {
 pub enum ServerMessage {
     ActorCreated { actor_id: ActorId },
     WorldDelta(StateDelta),
+    WorldEvent { message: String },
     Error { code: u32, message: String },
 }
 
@@ -244,6 +300,15 @@ mod tests {
     }
 
     #[test]
+    fn faction_hostility() {
+        assert!(Faction::Empire.is_hostile_to(&Faction::Alliance));
+        assert!(Faction::Alliance.is_hostile_to(&Faction::Empire));
+        assert!(!Faction::Empire.is_hostile_to(&Faction::Empire));
+        assert!(!Faction::Empire.is_hostile_to(&Faction::Neutral));
+        assert!(!Faction::WanderersGuild.is_hostile_to(&Faction::Alliance));
+    }
+
+    #[test]
     fn actor_state_serde_roundtrip() {
         let state = ActorState {
             id: ActorId(42),
@@ -252,11 +317,38 @@ mod tests {
             cell: GridCell(0, 0),
             tick: 100,
             last_utterance: Some("Hello".to_string()),
+            role: ActorRole::Knight,
+            faction: Faction::Empire,
+            hp: 80,
+            max_hp: 100,
+            xp: 150,
+            level: 2,
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: ActorState = serde_json::from_str(&json).unwrap();
         assert_eq!(back.id, state.id);
         assert_eq!(back.name, state.name);
         assert_eq!(back.tick, state.tick);
+        assert_eq!(back.hp, 80);
+        assert_eq!(back.level, 2);
+        assert_eq!(back.faction, Faction::Empire);
+    }
+
+    #[test]
+    fn create_actor_command_optional_fields() {
+        // Deserializes without role/faction (backward compat)
+        let json = r#"{
+            "type": "CreateActor",
+            "name": "Test",
+            "personality": "p",
+            "backstory": "b",
+            "model": "Mock",
+            "position": {"x": 1.0, "y": 2.0}
+        }"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        if let ClientCommand::CreateActor { role, faction, .. } = cmd {
+            assert!(role.is_none());
+            assert!(faction.is_none());
+        }
     }
 }

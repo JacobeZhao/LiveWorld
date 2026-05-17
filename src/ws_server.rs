@@ -10,8 +10,8 @@ use crate::llm_adapter::create_adapter;
 use crate::metrics;
 use crate::semantic_cache::SemanticCache;
 use crate::types::{
-    ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage, SessionId,
-    WorldConfig,
+    ActorId, ActorMessage, ActorRole, ActorSpec, ClientCommand, Faction, LlmModel, Position,
+    ServerMessage, SessionFrame, SessionId, WorldConfig,
 };
 use crate::world_engine::SessionQueue;
 use ahash::AHashMap;
@@ -109,6 +109,8 @@ pub enum EngineCommand {
         backstory: String,
         model: LlmModel,
         position: Position,
+        role: Option<ActorRole>,
+        faction: Option<Faction>,
         /// Oneshot reply carries (ActorId, queue) back to the connection handler.
         reply: oneshot::Sender<Result<(ActorId, SessionQueue), String>>,
     },
@@ -204,6 +206,8 @@ async fn command_processor(
                 backstory,
                 model,
                 position,
+                role,
+                faction,
                 reply,
             } => {
                 if name.len() > 64 {
@@ -232,6 +236,8 @@ async fn command_processor(
                     backstory,
                     model,
                     position,
+                    role: role.unwrap_or_default(),
+                    faction: faction.unwrap_or_default(),
                 };
                 let spec_for_dl = spec.clone();
                 let (handle, queue) = {
@@ -503,6 +509,8 @@ async fn handle_client_command(
             backstory,
             model,
             position,
+            role,
+            faction,
         } => {
             if *has_actor {
                 send_error(out_tx, 409, "Session already has an actor").await;
@@ -517,6 +525,8 @@ async fn handle_client_command(
                     backstory,
                     model,
                     position,
+                    role,
+                    faction,
                     reply: reply_tx,
                 })
                 .await
@@ -533,13 +543,21 @@ async fn handle_client_command(
                         let mut ticker = interval(Duration::from_millis(40)); // 25 Hz
                         loop {
                             ticker.tick().await;
-                            let deltas: Vec<_> = {
+                            let frames: Vec<SessionFrame> = {
                                 let mut q = queue.lock().unwrap();
                                 q.drain(..).collect()
                             };
-                            for delta in deltas {
-                                let bytes = serde_json::to_vec(&ServerMessage::WorldDelta(delta))
-                                    .unwrap_or_default();
+                            for frame in frames {
+                                let bytes = match frame {
+                                    SessionFrame::Delta(delta) => {
+                                        serde_json::to_vec(&ServerMessage::WorldDelta(delta))
+                                            .unwrap_or_default()
+                                    }
+                                    SessionFrame::WorldEvent { message } => {
+                                        serde_json::to_vec(&ServerMessage::WorldEvent { message })
+                                            .unwrap_or_default()
+                                    }
+                                };
                                 if pump_out.send(bytes).await.is_err() {
                                     return;
                                 }

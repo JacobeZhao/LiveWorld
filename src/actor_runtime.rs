@@ -136,7 +136,7 @@ impl ActorRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ActorId, ActorMessage, LlmModel, Position};
+    use crate::types::{ActorId, ActorMessage, ActorRole, Faction, LlmModel, Position};
 
     fn make_spec(id: u64, x: f32, y: f32) -> ActorSpec {
         ActorSpec {
@@ -146,6 +146,8 @@ mod tests {
             backstory: String::new(),
             model: LlmModel::Mock,
             position: Position::new(x, y),
+            role: ActorRole::Wanderer,
+            faction: Faction::Neutral,
         }
     }
 

@@ -83,7 +83,7 @@ pub fn diff_states(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ActorId, GridCell, Position};
+    use crate::types::{ActorId, ActorRole, Faction, GridCell, Position};
 
     fn make_state(id: u64, x: f32, y: f32, tick: u64) -> ActorState {
         ActorState {
@@ -93,6 +93,12 @@ mod tests {
             cell: GridCell(0, 0),
             tick,
             last_utterance: None,
+            role: ActorRole::Wanderer,
+            faction: Faction::Neutral,
+            hp: 80,
+            max_hp: 80,
+            xp: 0,
+            level: 1,
         }
     }
 

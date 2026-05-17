@@ -1,5 +1,5 @@
 // Agent decision loop: each agent periodically queries its LLM to decide
-// what to do next (move, speak, interact). Runs as an independent Tokio task,
+// what to do next (move, speak, attack). Runs as an independent Tokio task,
 // completely asynchronous — never blocks the world tick thread.
 
 use crate::actor::ActorHandle;
@@ -7,7 +7,7 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::llm_adapter::LlmRequest;
 use crate::metrics;
 use crate::semantic_cache::SemanticCache;
-use crate::types::{ActorMessage, ActorSpec, ActorState, Position};
+use crate::types::{ActorMessage, ActorRole, ActorSpec, ActorState, Faction, Position};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,11 +20,11 @@ use tracing::{debug, warn};
 pub enum AgentAction {
     Move(Position),
     Speak(String),
+    Attack(String), // target actor name
     Idle,
 }
 
 /// Parse a structured action from free-form LLM text.
-/// Format expected: "MOVE x,y" or "SPEAK text" or anything else → Idle.
 fn parse_action(text: &str) -> AgentAction {
     let trimmed = text.trim();
     if let Some(rest) = trimmed.strip_prefix("MOVE ") {
@@ -41,18 +41,40 @@ fn parse_action(text: &str) -> AgentAction {
     if let Some(rest) = trimmed.strip_prefix("SPEAK ") {
         return AgentAction::Speak(rest.to_string());
     }
+    if let Some(rest) = trimmed.strip_prefix("ATTACK ") {
+        return AgentAction::Attack(rest.trim().to_string());
+    }
     AgentAction::Idle
 }
 
-/// Build the system prompt for an actor from its spec.
+/// Build the system prompt for an actor from its spec (role + faction aware).
 fn system_prompt(spec: &ActorSpec) -> String {
+    let role_hint = match spec.role {
+        ActorRole::Merchant => "seek others to trade with, share market news",
+        ActorRole::Scholar => "observe and share wisdom or historical lore",
+        ActorRole::Knight => "patrol, protect allies, challenge enemies when you meet them",
+        ActorRole::Mage => "move mysteriously, speak of arcane matters",
+        ActorRole::Bard => "entertain everyone nearby, tell stories and sing",
+        ActorRole::Guard => "stay near your post, watch for enemies",
+        ActorRole::Wanderer => "roam freely and explore the world",
+    };
+    let faction_hint = match spec.faction {
+        Faction::Empire => "You serve the Empire. Alliance members are your enemies.",
+        Faction::Alliance => "You fight for the Alliance. Empire soldiers are your enemies.",
+        Faction::WanderersGuild => "You owe loyalty to no one. Trade with all, trust few.",
+        Faction::MagesCircle => "Knowledge is power. Avoid combat; study and advise.",
+        Faction::Neutral => "You are independent and neutral.",
+    };
     format!(
-        "You are {name}, a character in a virtual world. \
-         Personality: {personality}. \
-         Backstory: {backstory}. \
+        "You are {name}, a character in a fantasy world at war. \
+         Role: {role_hint}. {faction_hint} \
+         Personality: {personality}. Backstory: {backstory}. \
          Respond with ONE action on a single line: \
-         'MOVE x,y' (coordinates 0-10000) or 'SPEAK text' (up to 50 chars).",
+         'MOVE x,y' (coordinates 0-10000) | 'SPEAK text (max 60 chars)' | \
+         'ATTACK name' (only use against hostile faction members).",
         name = spec.name,
+        role_hint = role_hint,
+        faction_hint = faction_hint,
         personality = spec.personality,
         backstory = spec.backstory,
     )
@@ -64,9 +86,16 @@ fn user_prompt(state: &ActorState, nearby: &[ActorState]) -> String {
         .iter()
         .take(5)
         .map(|s| {
+            let rel = if state.faction.is_hostile_to(&s.faction) {
+                "ENEMY"
+            } else {
+                "ally"
+            };
             format!(
-                "{} at ({:.0},{:.0}){}",
+                "{} [{rel} HP:{}/{}] at ({:.0},{:.0}){}",
                 s.name,
+                s.hp,
+                s.max_hp,
                 s.position.x,
                 s.position.y,
                 s.last_utterance
@@ -78,9 +107,13 @@ fn user_prompt(state: &ActorState, nearby: &[ActorState]) -> String {
         .collect();
 
     format!(
-        "You are at ({:.0}, {:.0}). Nearby: {}. What do you do?",
+        "You are at ({:.0},{:.0}) HP:{}/{} XP:{} Lv:{}. Nearby: {}. What do you do?",
         state.position.x,
         state.position.y,
+        state.hp,
+        state.max_hp,
+        state.xp,
+        state.level,
         if nearby_desc.is_empty() {
             "nobody".to_string()
         } else {
@@ -146,9 +179,6 @@ impl AgentDecisionLoop {
     }
 
     /// Run until the actor is shut down or absent from snapshot for too long.
-    ///
-    /// Reads own state and nearby actors from the shared world snapshot (updated
-    /// every few ticks by the main tick loop).  No per-actor state allocation needed.
     pub async fn run(self, world_snapshot: crate::global_agents::SharedSnapshot) {
         let mut interval = time::interval(self.config.decision_interval);
         interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
@@ -234,6 +264,24 @@ impl AgentDecisionLoop {
                         AgentAction::Speak(text) => {
                             self.handle.send(ActorMessage::Speak { text });
                         }
+                        AgentAction::Attack(target_name) => {
+                            // Look up the target actor by name in the snapshot.
+                            let target_id = {
+                                let snap = world_snapshot.lock().unwrap();
+                                snap.values()
+                                    .find(|s| {
+                                        s.name.eq_ignore_ascii_case(&target_name) && s.id != my_id
+                                    })
+                                    .map(|s| s.id)
+                            };
+                            if let Some(tid) = target_id {
+                                // Route attack via Interact effect → world engine resolves combat.
+                                self.handle.send(ActorMessage::Interact {
+                                    target: tid,
+                                    action: "ATTACK".to_string(),
+                                });
+                            }
+                        }
                         AgentAction::Idle => {}
                     }
                 }
@@ -248,7 +296,6 @@ impl AgentDecisionLoop {
 }
 
 /// Priority scheduler: routes high-priority actors to faster execution slots.
-/// For now this is a simple wrapper; extend with a priority queue if needed.
 pub struct PriorityScheduler {
     /// Semaphore limiting concurrent LLM calls to avoid thundering herd.
     semaphore: Arc<tokio::sync::Semaphore>,
@@ -275,7 +322,7 @@ impl PriorityScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ActorId, GridCell, LlmModel};
+    use crate::types::{ActorId, ActorRole, Faction, GridCell, LlmModel};
 
     fn make_spec() -> ActorSpec {
         ActorSpec {
@@ -285,6 +332,8 @@ mod tests {
             backstory: "A traveler".to_string(),
             model: LlmModel::Mock,
             position: Position::new(50.0, 50.0),
+            role: ActorRole::Knight,
+            faction: Faction::Empire,
         }
     }
 
@@ -296,6 +345,12 @@ mod tests {
             cell: GridCell(5, 5),
             tick: 0,
             last_utterance: None,
+            role: ActorRole::Knight,
+            faction: Faction::Empire,
+            hp: 100,
+            max_hp: 100,
+            xp: 0,
+            level: 1,
         }
     }
 
@@ -312,26 +367,56 @@ mod tests {
     }
 
     #[test]
+    fn parse_attack() {
+        let action = parse_action("ATTACK Elena");
+        matches!(action, AgentAction::Attack(n) if n == "Elena");
+    }
+
+    #[test]
     fn parse_idle_on_unknown() {
         let action = parse_action("DO NOTHING");
         matches!(action, AgentAction::Idle);
     }
 
     #[test]
-    fn system_prompt_includes_name() {
+    fn system_prompt_includes_name_and_faction() {
         let spec = make_spec();
         let prompt = system_prompt(&spec);
         assert!(prompt.contains("TestAgent"));
         assert!(prompt.contains("curious"));
+        assert!(prompt.contains("Empire"));
+        assert!(prompt.contains("Alliance"));
     }
 
     #[test]
-    fn user_prompt_includes_position() {
+    fn user_prompt_includes_position_and_hp() {
         let state = make_state(Position::new(100.0, 200.0));
         let prompt = user_prompt(&state, &[]);
         assert!(prompt.contains("100"));
         assert!(prompt.contains("200"));
         assert!(prompt.contains("nobody"));
+        assert!(prompt.contains("HP:"));
+    }
+
+    #[test]
+    fn user_prompt_labels_enemy() {
+        let state = make_state(Position::new(0.0, 0.0));
+        let enemy = ActorState {
+            id: ActorId(2),
+            name: "Enemy".to_string(),
+            position: Position::new(10.0, 10.0),
+            cell: GridCell(1, 1),
+            tick: 0,
+            last_utterance: None,
+            role: ActorRole::Knight,
+            faction: Faction::Alliance, // hostile to Empire
+            hp: 80,
+            max_hp: 100,
+            xp: 0,
+            level: 1,
+        };
+        let prompt = user_prompt(&state, &[enemy]);
+        assert!(prompt.contains("ENEMY"));
     }
 
     #[tokio::test]

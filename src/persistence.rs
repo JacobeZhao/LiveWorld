@@ -2,7 +2,7 @@
 // Format: snapshot_<tick>.bin with a "latest" symlink/pointer file.
 // Recovery: load latest snapshot and re-inject all actors into the runtime.
 
-use crate::types::{ActorSpec, ActorState, LlmModel, Position};
+use crate::types::{ActorRole, ActorSpec, ActorState, Faction, LlmModel, Position};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -62,6 +62,8 @@ impl PersistedSpec {
             backstory: self.backstory,
             model,
             position,
+            role: ActorRole::default(),
+            faction: Faction::default(),
         }
     }
 }
@@ -197,6 +199,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn make_state(id: u64) -> ActorState {
+        use crate::types::{ActorRole, Faction};
         ActorState {
             id: ActorId(id),
             name: format!("A{id}"),
@@ -204,6 +207,12 @@ mod tests {
             cell: GridCell(id as i32, 0),
             tick: 100,
             last_utterance: None,
+            role: ActorRole::Wanderer,
+            faction: Faction::Neutral,
+            hp: 80,
+            max_hp: 80,
+            xp: 0,
+            level: 1,
         }
     }
 
@@ -313,6 +322,8 @@ mod tests {
                 backstory: "z".to_string(),
                 model: model.clone(),
                 position: Position::new(0.0, 0.0),
+                role: ActorRole::Wanderer,
+                faction: Faction::Neutral,
             };
             let persisted = PersistedSpec::from_spec(&spec);
             let restored = persisted.into_spec(Position::new(0.0, 0.0));
