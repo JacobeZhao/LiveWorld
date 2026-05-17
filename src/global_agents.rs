@@ -3,7 +3,6 @@
 // generates directives, and injects events into the world via a command channel.
 // They never run on the tick thread.
 
-use crate::engine_api::EngineApi;
 use crate::llm_adapter::LlmRequest;
 use crate::semantic_cache::SemanticCache;
 use crate::types::{ActorId, ActorState, LlmModel};

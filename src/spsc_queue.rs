@@ -25,7 +25,7 @@ impl<T> Padded<T> {
     }
 }
 
-struct SpscInner<T, const N: usize> {
+pub(crate) struct SpscInner<T, const N: usize> {
     head: Padded<AtomicUsize>,
     tail: Padded<AtomicUsize>,
     buf: [UnsafeCell<MaybeUninit<T>>; N],

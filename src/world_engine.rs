@@ -3,8 +3,8 @@ use crate::actor_runtime::ActorRuntime;
 use crate::interest_manager::InterestManager;
 use crate::state_encoder::{diff_states, StateEncoder};
 use crate::types::{
-    now_ms, ActorId, ActorMessage, ActorSpec, ActorState, GridCell, Position, SessionId,
-    StateDelta, WorldConfig, WorldDirective,
+    now_ms, ActorId, ActorMessage, ActorSpec, ActorState, GridCell, SessionId, StateDelta,
+    WorldConfig, WorldDirective,
 };
 use ahash::AHashMap;
 use std::collections::VecDeque;
@@ -18,6 +18,7 @@ pub type SessionQueue = Arc<Mutex<VecDeque<StateDelta>>>;
 pub struct WorldEngine {
     runtime: ActorRuntime,
     interest: InterestManager,
+    #[allow(dead_code)]
     encoder: StateEncoder,
     cfg: WorldConfig,
     tick_count: u64,

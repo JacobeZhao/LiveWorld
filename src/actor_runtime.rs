@@ -12,6 +12,7 @@ pub struct ActorRuntime {
     actors: AHashMap<ActorId, Actor>,
     handles: AHashMap<ActorId, ActorHandle>,
     grid: SpatialGrid,
+    #[allow(dead_code)]
     cfg: WorldConfig,
     stats: RuntimeStats,
 }

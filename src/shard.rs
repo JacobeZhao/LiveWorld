@@ -11,9 +11,7 @@
 /// `ShardGateway` layer above this struct.
 use crate::actor::ActorHandle;
 use crate::engine_api::EngineApi;
-use crate::types::{
-    ActorId, ActorMessage, ActorSpec, ActorState, Position, SessionId, WorldConfig, WorldDirective,
-};
+use crate::types::{ActorMessage, ActorSpec, ActorState, SessionId, WorldConfig, WorldDirective};
 use crate::world_engine::{SessionQueue, WorldEngine};
 use ahash::AHashMap;
 use std::time::Instant;

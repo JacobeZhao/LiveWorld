@@ -2,11 +2,11 @@
 // Format: snapshot_<tick>.bin with a "latest" symlink/pointer file.
 // Recovery: load latest snapshot and re-inject all actors into the runtime.
 
-use crate::types::{ActorSpec, ActorState, LlmModel, Position, WorldConfig};
+use crate::types::{ActorSpec, ActorState, LlmModel, Position};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Instant;
 use tracing::{info, warn};
 

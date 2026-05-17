@@ -90,7 +90,7 @@ async fn publisher_loop(client: redis::Client, snap: SharedSnapshot, pod_id: Str
         // Compute delta.
         let updates: Vec<ActorState> = current
             .values()
-            .filter(|s| prev.get(&s.id).map_or(true, |p| p != *s))
+            .filter(|s| prev.get(&s.id) != Some(*s))
             .cloned()
             .collect();
         let removed: Vec<ActorId> = prev

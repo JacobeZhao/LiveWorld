@@ -373,7 +373,7 @@ async fn handle_connection(
     metrics::inc_ws_connections();
     let out_task = tokio::spawn(async move {
         while let Some(bytes) = out_rx.recv().await {
-            if ws_sink.send(Message::Binary(bytes.into())).await.is_err() {
+            if ws_sink.send(Message::Binary(bytes)).await.is_err() {
                 break;
             }
         }

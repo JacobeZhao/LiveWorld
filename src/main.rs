@@ -178,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
                     let mut eng = engine.lock().unwrap();
                     eng.tick();
                     let count = eng.tick_count();
-                    if count % 25 == 0 {
+                    if count.is_multiple_of(25) {
                         Some(eng.full_snapshot())
                     } else {
                         None

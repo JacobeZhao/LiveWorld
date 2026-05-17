@@ -7,7 +7,7 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::llm_adapter::LlmRequest;
 use crate::metrics;
 use crate::semantic_cache::SemanticCache;
-use crate::types::{ActorId, ActorMessage, ActorSpec, ActorState, LlmModel, Position};
+use crate::types::{ActorMessage, ActorSpec, ActorState, Position};
 use anyhow::Result;
 use std::sync::Arc;
 use std::time::Duration;

@@ -79,7 +79,7 @@ impl SpatialGrid {
     /// True if actor is in the cell it claims to be in.
     #[inline]
     pub fn contains(&self, id: ActorId, cell: GridCell) -> bool {
-        self.cells.get(&cell).map_or(false, |s| s.contains(&id))
+        self.cells.get(&cell).is_some_and(|s| s.contains(&id))
     }
 
     /// Count of occupied cells (for diagnostics).

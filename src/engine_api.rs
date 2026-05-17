@@ -3,7 +3,7 @@
 /// global agents all talk through this trait; only `main.rs` decides which
 /// concrete implementation to wire in.
 use crate::actor::ActorHandle;
-use crate::types::{ActorId, ActorMessage, ActorSpec, ActorState, SessionId, WorldDirective};
+use crate::types::{ActorSpec, ActorState, SessionId, WorldDirective};
 use crate::world_engine::{SessionQueue, WorldEngine};
 
 pub trait EngineApi: Send {
