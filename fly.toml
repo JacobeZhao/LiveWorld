@@ -1,8 +1,12 @@
-# Fly.io deployment configuration for LiveWorld.
-# Deploy: fly launch --no-deploy && fly volumes create liveworld_data --size 1 && fly deploy
+# Fly.io deployment — single port 8080 handles both HTTP and WebSocket.
+# Deploy:
+#   fly launch --no-deploy --name liveworld --region sin
+#   fly volumes create liveworld_data --size 1 --region sin
+#   fly secrets set JWT_SECRET="your-32-plus-char-secret"
+#   fly deploy
 
 app            = "liveworld"
-primary_region = "sin"          # Singapore; change to "lax" (LA) or "fra" (Frankfurt) as needed
+primary_region = "sin"
 
 [build]
 
@@ -14,12 +18,12 @@ primary_region = "sin"          # Singapore; change to "lax" (LA) or "fra" (Fran
   cpus     = 1
   memory   = "512mb"
 
-# ── HTTP service: frontend, auth, health (443 → internal 8081) ────────────────
+# Single service: 443 (HTTPS/WSS) → internal 8080
 [[services]]
-  internal_port = 8081
-  protocol      = "tcp"
-  auto_stop_machines  = false
-  auto_start_machines = true
+  internal_port        = 8080
+  protocol             = "tcp"
+  auto_stop_machines   = false
+  auto_start_machines  = true
   min_machines_running = 1
 
   [[services.ports]]
@@ -36,25 +40,11 @@ primary_region = "sin"          # Singapore; change to "lax" (LA) or "fra" (Fran
     interval     = "15s"
     method       = "get"
     path         = "/health"
-    port         = 8081
+    port         = 8080
     timeout      = "2s"
     type         = "http"
 
-# ── WebSocket service (wss://app.fly.dev:8080 → internal 8080) ───────────────
-[[services]]
-  internal_port = 8080
-  protocol      = "tcp"
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port     = 8080
-
-  [[services.tcp_checks]]
-    grace_period = "10s"
-    interval     = "15s"
-    timeout      = "2s"
-
-# ── Persistent volume for snapshots ──────────────────────────────────────────
+# Persistent volume for snapshots
 [[mounts]]
   source      = "liveworld_data"
   destination = "/app/data"

@@ -82,16 +82,16 @@ canvas { display: block; cursor: crosshair; }
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
 // Auto-detect URLs: localhost uses fixed ports; production uses same hostname.
+// Both HTTP and WebSocket are served on the same port (8080 local, 443 prod).
 function getUrls() {
+  const proto    = window.location.protocol;
   const hostname = window.location.hostname;
   const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1';
-  const isSecure = window.location.protocol === 'https:';
-  if (isLocal) {
-    return { ws: 'ws://localhost:8080', http: 'http://localhost:8081' };
-  }
+  const wsProto  = proto === 'https:' ? 'wss' : 'ws';
+  const port     = isLocal ? ':8080' : '';
   return {
-    ws:   `${isSecure ? 'wss' : 'ws'}://${hostname}:8080`,
-    http: window.location.origin,   // 443 → 8081 via Fly.io mapping
+    ws:   `${wsProto}://${hostname}${port}`,
+    http: isLocal ? 'http://localhost:8080' : window.location.origin,
   };
 }
 const { ws: WS_URL, http: HTTP_URL } = getUrls();

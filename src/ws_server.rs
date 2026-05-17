@@ -20,6 +20,7 @@ use futures_util::{SinkExt, StreamExt};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, interval};
@@ -152,8 +153,9 @@ pub async fn run_ws_server(
                 info!(session = session.0, %addr, "New connection");
                 let lim = Arc::clone(&limiter);
                 let tx = cmd_tx.clone();
+                let eng = Arc::clone(&engine);
                 tokio::spawn(async move {
-                    handle_connection(stream, addr, session, tx).await;
+                    handle_connection(stream, addr, session, tx, eng).await;
                     lim.lock().unwrap().release(ip);
                 });
             }
@@ -284,12 +286,59 @@ async fn command_processor(
 
 // ── Per-connection handler ────────────────────────────────────────────────────
 
+// ── Plain-HTTP fallback on the WS port ───────────────────────────────────────
+
+/// Called when a TCP connection on the WS port does NOT contain an `Upgrade: websocket`
+/// header — i.e. a browser hitting the address directly, a health check, etc.
+async fn serve_http(mut stream: TcpStream, engine: SharedEngine) {
+    let mut buf = [0u8; 4096];
+    let n = match stream.read(&mut buf).await {
+        Ok(n) if n > 0 => n,
+        _ => return,
+    };
+    let req = std::str::from_utf8(&buf[..n]).unwrap_or("");
+    let first_line = req.lines().next().unwrap_or("");
+    let method = first_line.split_whitespace().next().unwrap_or("GET");
+    let path   = first_line.split_whitespace().nth(1).unwrap_or("/");
+    let body   = req.split("\r\n\r\n").nth(1)
+        .or_else(|| req.split("\n\n").nth(1))
+        .unwrap_or("")
+        .trim();
+
+    let (status, ct, body) = metrics::handle_request(method, path, body, &engine).await;
+    let response = format!(
+        "HTTP/1.1 {status}\r\n\
+         Content-Type: {ct}\r\n\
+         Content-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Connection: close\r\n\
+         \r\n\
+         {body}",
+        body.len()
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+}
+
 async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
     session: SessionId,
     cmd_tx: mpsc::Sender<EngineCommand>,
+    engine: SharedEngine,
 ) {
+    // Peek to decide: WebSocket upgrade or plain HTTP.
+    let mut peek = [0u8; 512];
+    let n = stream.peek(&mut peek).await.unwrap_or(0);
+    let is_ws = std::str::from_utf8(&peek[..n])
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .contains("upgrade: websocket");
+
+    if !is_ws {
+        serve_http(stream, engine).await;
+        return;
+    }
+
     let ws_stream = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {

@@ -81,7 +81,7 @@ pub async fn run_http_server(engine: SharedEngine, port: u16) -> Result<()> {
     }
 }
 
-async fn handle_request(
+pub async fn handle_request(
     method: &str,
     path: &str,
     body: &str,
