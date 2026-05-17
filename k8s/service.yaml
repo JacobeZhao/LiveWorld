@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: liveworld-ws
+  namespace: liveworld
+  labels:
+    app: liveworld
+spec:
+  selector:
+    app: liveworld
+  ports:
+    - name: websocket
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: liveworld-http
+  namespace: liveworld
+  labels:
+    app: liveworld
+spec:
+  selector:
+    app: liveworld
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+  type: ClusterIP

@@ -3,29 +3,18 @@
 // generates directives, and injects events into the world via a command channel.
 // They never run on the tick thread.
 
-use crate::llm_adapter::{LlmAdapter, LlmRequest, LlmResponse};
+use crate::engine_api::EngineApi;
+use crate::llm_adapter::{LlmRequest};
 use crate::semantic_cache::SemanticCache;
 use crate::types::{ActorId, ActorState, LlmModel};
-use anyhow::Result;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex as AsyncMutex};
 use tokio::time;
 use tracing::{info, warn};
 
-// ── World directive (global agent → world engine) ─────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum WorldDirective {
-    /// Forcibly move an actor (e.g. anti-cheat teleport correction).
-    ForceMove { actor_id: ActorId, to: crate::types::Position },
-    /// Broadcast a narrative event to all players.
-    NarrativeEvent { message: String },
-    /// Adjust economy: inject resources into the world.
-    EconomyAdjust { resource: String, delta: i64 },
-    /// Flag actor for review (anti-cheat).
-    FlagActor { actor_id: ActorId, reason: String },
-}
+// WorldDirective lives in types.rs; re-export for backwards compatibility.
+pub use crate::types::WorldDirective;
 
 /// World snapshot shared between the tick thread and global agents.
 pub type SharedSnapshot = Arc<Mutex<Vec<ActorState>>>;
@@ -263,7 +252,6 @@ pub async fn process_directives(
     engine: crate::ws_server::SharedEngine,
 ) {
     while let Some(directive) = rx.recv().await {
-        // Log first so the lock is not held during I/O.
         match &directive {
             WorldDirective::NarrativeEvent { message } => info!(message, "Directive: NarrativeEvent"),
             WorldDirective::EconomyAdjust { resource, delta } => {
@@ -276,7 +264,6 @@ pub async fn process_directives(
                 info!(actor = actor_id.0, ?to, "Directive: ForceMove");
             }
         }
-        // Apply: lock is held only for the synchronous apply call.
         let eng = engine.lock().unwrap();
         eng.apply_directive(&directive);
     }
@@ -366,12 +353,14 @@ mod tests {
 
     #[tokio::test]
     async fn directive_processor_runs_without_panic() {
+        use crate::engine_api::EngineApi;
         use crate::types::WorldConfig;
         use crate::world_engine::WorldEngine;
         use crate::ws_server::SharedEngine;
 
-        let engine: SharedEngine =
-            std::sync::Arc::new(std::sync::Mutex::new(WorldEngine::new(WorldConfig::default())));
+        let engine: SharedEngine = std::sync::Arc::new(std::sync::Mutex::new(
+            Box::new(WorldEngine::new(WorldConfig::default())) as Box<dyn EngineApi + Send>,
+        ));
         let (tx, rx) = mpsc::channel(32);
         tokio::spawn(process_directives(rx, engine));
 

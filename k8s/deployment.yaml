@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: liveworld
+  namespace: liveworld
+  labels:
+    app: liveworld
+spec:
+  replicas: 2                          # scale horizontally; each replica = one shard
+  selector:
+    matchLabels:
+      app: liveworld
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0                # zero-downtime rollout
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: liveworld
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "8081"
+        prometheus.io/path:   "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: liveworld
+          image: ghcr.io/jacobezhao/liveworld:latest   # update to your registry
+          imagePullPolicy: Always
+          ports:
+            - name: websocket
+              containerPort: 8080
+              protocol: TCP
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: liveworld-config
+            - secretRef:
+                name: liveworld-secrets
+          resources:
+            requests:
+              cpu:    "500m"
+              memory: "256Mi"
+            limits:
+              cpu:    "2000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8081
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: liveworld-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: liveworld-data
+  namespace: liveworld
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

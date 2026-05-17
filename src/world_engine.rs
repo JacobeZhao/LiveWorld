@@ -1,11 +1,10 @@
 use crate::actor::ActorHandle;
 use crate::actor_runtime::ActorRuntime;
-use crate::global_agents::WorldDirective;
 use crate::interest_manager::InterestManager;
 use crate::state_encoder::{StateEncoder, diff_states};
 use crate::types::{
     ActorId, ActorMessage, ActorSpec, ActorState, GridCell, Position, SessionId, StateDelta,
-    WorldConfig, now_ms,
+    WorldConfig, WorldDirective, now_ms,
 };
 use ahash::AHashMap;
 use std::collections::VecDeque;

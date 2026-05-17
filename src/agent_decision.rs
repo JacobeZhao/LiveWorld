@@ -3,7 +3,9 @@
 // completely asynchronous — never blocks the world tick thread.
 
 use crate::actor::ActorHandle;
+use crate::circuit_breaker::CircuitBreaker;
 use crate::llm_adapter::LlmRequest;
+use crate::metrics;
 use crate::semantic_cache::SemanticCache;
 use crate::types::{ActorId, ActorMessage, ActorSpec, ActorState, LlmModel, Position};
 use anyhow::Result;
@@ -111,6 +113,8 @@ pub struct AgentDecisionLoop {
     handle: ActorHandle,
     cache: Arc<Mutex<SemanticCache>>,
     config: DecisionConfig,
+    /// Shared circuit breaker — one per LLM backend, not per agent.
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl AgentDecisionLoop {
@@ -119,8 +123,20 @@ impl AgentDecisionLoop {
         handle: ActorHandle,
         cache: Arc<Mutex<SemanticCache>>,
         config: DecisionConfig,
+        circuit_breaker: Arc<CircuitBreaker>,
     ) -> Self {
-        Self { spec, handle, cache, config }
+        Self { spec, handle, cache, config, circuit_breaker }
+    }
+
+    /// Convenience constructor with a dedicated (non-shared) circuit breaker.
+    pub fn new_with_default_breaker(
+        spec: ActorSpec,
+        handle: ActorHandle,
+        cache: Arc<Mutex<SemanticCache>>,
+        config: DecisionConfig,
+    ) -> Self {
+        let cb = Arc::new(CircuitBreaker::new(5, Duration::from_secs(30)));
+        Self::new(spec, handle, cache, config, cb)
     }
 
     /// Run until the actor is shut down. Intended to be spawned as a Tokio task.
@@ -145,6 +161,17 @@ impl AgentDecisionLoop {
                 max_tokens: self.config.max_tokens,
             };
 
+            // Circuit breaker: skip LLM call when backend is unhealthy.
+            if self.circuit_breaker.is_open() {
+                debug!(
+                    actor = %self.spec.id.0,
+                    state = self.circuit_breaker.state_name(),
+                    "Circuit open — skipping LLM call"
+                );
+                continue;
+            }
+
+            metrics::inc_llm_calls();
             let resp = {
                 let mut cache = self.cache.lock().await;
                 cache.complete(req).await
@@ -152,6 +179,7 @@ impl AgentDecisionLoop {
 
             match resp {
                 Ok(r) => {
+                    self.circuit_breaker.record_success();
                     let action = parse_action(&r.text);
                     debug!(actor = %self.spec.id.0, ?action, "decision");
                     match action {
@@ -165,6 +193,8 @@ impl AgentDecisionLoop {
                     }
                 }
                 Err(e) => {
+                    metrics::inc_llm_errors();
+                    self.circuit_breaker.record_failure();
                     warn!(actor = %self.spec.id.0, err = %e, "LLM request failed");
                 }
             }

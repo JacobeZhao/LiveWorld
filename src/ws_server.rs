@@ -2,11 +2,13 @@
 // to the world engine, and streams state deltas back to each client at 25 Hz.
 
 use crate::actor::ActorHandle;
+use crate::engine_api::EngineApi;
+use crate::metrics;
 use crate::types::{
     ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage,
     SessionId, WorldConfig,
 };
-use crate::world_engine::{SessionQueue, WorldEngine};
+use crate::world_engine::SessionQueue;
 use ahash::AHashMap;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
@@ -19,8 +21,10 @@ use tokio::time::{Duration, interval};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
-/// Thread-safe handle to the world engine.
-pub type SharedEngine = Arc<Mutex<WorldEngine>>;
+/// Thread-safe, type-erased handle to any engine implementation.
+/// Use `Box<dyn EngineApi + Send>` so callers are decoupled from the
+/// concrete type (WorldEngine or ShardedEngine).
+pub type SharedEngine = Arc<Mutex<Box<dyn EngineApi + Send>>>;
 
 // ── Rate limiter (token bucket, per-connection) ───────────────────────────────
 
@@ -201,6 +205,7 @@ async fn handle_connection(
     // loop and pump task don't need to share the sink.
     let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(128);
 
+    metrics::inc_ws_connections();
     let out_task = tokio::spawn(async move {
         while let Some(bytes) = out_rx.recv().await {
             if ws_sink.send(Message::Binary(bytes.into())).await.is_err() {
@@ -292,6 +297,7 @@ async fn handle_connection(
         p.abort();
     }
     out_task.abort();
+    metrics::dec_ws_connections();
     let _ = cmd_tx.send(EngineCommand::SessionDisconnect { session }).await;
     info!(session = session.0, %addr, "Connection closed");
 }
@@ -397,7 +403,8 @@ async fn send_error(out_tx: &mpsc::Sender<Vec<u8>>, code: u32, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::WorldConfig;
+    use crate::engine_api::EngineApi;
+    use crate::world_engine::WorldEngine;
 
     #[test]
     fn session_id_unique() {

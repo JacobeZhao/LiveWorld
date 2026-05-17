@@ -188,6 +188,20 @@ pub enum ServerMessage {
     Error { code: u32, message: String },
 }
 
+// ── World directives (global agents → world engine) ──────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum WorldDirective {
+    /// Forcibly relocate an actor (e.g. anti-cheat teleport correction).
+    ForceMove { actor_id: ActorId, to: Position },
+    /// Broadcast a narrative event to all sessions.
+    NarrativeEvent { message: String },
+    /// Adjust a world economy resource.
+    EconomyAdjust { resource: String, delta: i64 },
+    /// Flag an actor for review.
+    FlagActor { actor_id: ActorId, reason: String },
+}
+
 // ── Utility: current timestamp in ms ─────────────────────────────────────────
 
 #[inline]
