@@ -1,3 +1,12 @@
+---
+title: LiveWorld
+emoji: ⚔
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # LiveWorld
 
 **百万人在线的实时多智能体虚拟世界引擎**
