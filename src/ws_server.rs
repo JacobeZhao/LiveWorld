@@ -377,7 +377,11 @@ async fn handle_connection(
 
     metrics::inc_ws_connections();
     let out_task = tokio::spawn(async move {
-        let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        // interval_at delays the first tick so we don't immediately send a
+        // Ping on connection open (which breaks tests that look for Binary msgs).
+        let ping_delay = tokio::time::Duration::from_secs(30);
+        let mut ping_interval =
+            tokio::time::interval_at(tokio::time::Instant::now() + ping_delay, ping_delay);
         ping_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
