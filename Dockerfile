@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM rust:1.83-slim-bookworm AS builder
+FROM rust:1.85-slim-bookworm AS builder
 
 # Install OpenSSL headers (required by reqwest/native-tls on Linux)
 RUN apt-get update && apt-get install -y --no-install-recommends \
