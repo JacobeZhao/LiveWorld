@@ -125,7 +125,13 @@ impl AgentDecisionLoop {
         config: DecisionConfig,
         circuit_breaker: Arc<CircuitBreaker>,
     ) -> Self {
-        Self { spec, handle, cache, config, circuit_breaker }
+        Self {
+            spec,
+            handle,
+            cache,
+            config,
+            circuit_breaker,
+        }
     }
 
     /// Convenience constructor with a dedicated (non-shared) circuit breaker.
@@ -348,7 +354,9 @@ mod tests {
                     tokio::time::sleep(Duration::from_millis(10)).await;
                     c.fetch_sub(1, Ordering::SeqCst);
                     Ok::<_, anyhow::Error>(())
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
             }));
         }
 
@@ -356,6 +364,9 @@ mod tests {
             t.await.unwrap();
         }
 
-        assert!(peak.load(Ordering::SeqCst) <= 2, "Concurrency exceeded limit");
+        assert!(
+            peak.load(Ordering::SeqCst) <= 2,
+            "Concurrency exceeded limit"
+        );
     }
 }

@@ -95,5 +95,10 @@ fn bench_10m_messages(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_spsc_throughput, bench_latency_histogram, bench_10m_messages);
+criterion_group!(
+    benches,
+    bench_spsc_throughput,
+    bench_latency_histogram,
+    bench_10m_messages
+);
 criterion_main!(benches);

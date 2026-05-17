@@ -2,7 +2,7 @@
 // An Actor lives in its own thread / async task and owns its message queue consumer.
 // The hot path (process_message) must not block.
 
-use crate::spsc_queue::{SpscConsumer, SpscProducer, spsc_queue};
+use crate::spsc_queue::{spsc_queue, SpscConsumer, SpscProducer};
 use crate::types::{ActorId, ActorMessage, ActorSpec, ActorState, GridCell, Position};
 
 const QUEUE_SIZE: usize = 1024; // power of 2
@@ -32,7 +32,10 @@ pub struct ActorHandle {
 
 impl Clone for ActorHandle {
     fn clone(&self) -> Self {
-        ActorHandle { id: self.id, sender: self.sender.clone() }
+        ActorHandle {
+            id: self.id,
+            sender: self.sender.clone(),
+        }
     }
 }
 
@@ -81,7 +84,10 @@ impl Actor {
         while let Some(msg) = self.inbox.pop() {
             match msg {
                 ActorMessage::Move { to } => {
-                    effects.push(ActorEffect::Move { id: self.spec.id, to });
+                    effects.push(ActorEffect::Move {
+                        id: self.spec.id,
+                        to,
+                    });
                 }
                 ActorMessage::Speak { text } => {
                     self.state.last_utterance = Some(text.clone());
@@ -132,16 +138,29 @@ impl Actor {
 
     #[inline]
     pub fn is_alive(&self) -> bool {
-        matches!(self.lifecycle, ActorLifecycle::Active | ActorLifecycle::Spawning)
+        matches!(
+            self.lifecycle,
+            ActorLifecycle::Active | ActorLifecycle::Spawning
+        )
     }
 }
 
 /// Side-effects emitted by drain_inbox, consumed by the world engine.
 #[derive(Debug, Clone)]
 pub enum ActorEffect {
-    Move { id: ActorId, to: Position },
-    Speak { id: ActorId, text: String },
-    Interact { source: ActorId, target: ActorId, action: String },
+    Move {
+        id: ActorId,
+        to: Position,
+    },
+    Speak {
+        id: ActorId,
+        text: String,
+    },
+    Interact {
+        source: ActorId,
+        target: ActorId,
+        action: String,
+    },
 }
 
 #[cfg(test)]
@@ -173,7 +192,9 @@ mod tests {
     fn move_message_produces_effect() {
         let (mut actor, handle) = Actor::spawn(make_spec(2));
         actor.activate(GridCell(0, 0));
-        handle.send(ActorMessage::Move { to: Position::new(50.0, 50.0) });
+        handle.send(ActorMessage::Move {
+            to: Position::new(50.0, 50.0),
+        });
         let effects = actor.drain_inbox();
         assert_eq!(effects.len(), 1);
         matches!(&effects[0], ActorEffect::Move { .. });
@@ -184,7 +205,9 @@ mod tests {
         let (mut actor, handle) = Actor::spawn(make_spec(3));
         actor.activate(GridCell(0, 0));
         handle.send(ActorMessage::Shutdown);
-        handle.send(ActorMessage::Move { to: Position::new(1.0, 1.0) }); // after shutdown
+        handle.send(ActorMessage::Move {
+            to: Position::new(1.0, 1.0),
+        }); // after shutdown
         actor.drain_inbox();
         assert_eq!(actor.lifecycle, ActorLifecycle::ShuttingDown);
     }
@@ -193,7 +216,9 @@ mod tests {
     fn speak_updates_utterance() {
         let (mut actor, handle) = Actor::spawn(make_spec(4));
         actor.activate(GridCell(0, 0));
-        handle.send(ActorMessage::Speak { text: "Hello world".to_string() });
+        handle.send(ActorMessage::Speak {
+            text: "Hello world".to_string(),
+        });
         actor.drain_inbox();
         assert_eq!(actor.state.last_utterance.as_deref(), Some("Hello world"));
     }
@@ -202,7 +227,9 @@ mod tests {
     fn snapshot_reflects_current_state() {
         let (mut actor, handle) = Actor::spawn(make_spec(5));
         actor.activate(GridCell(0, 0));
-        handle.send(ActorMessage::Move { to: Position::new(20.0, 20.0) });
+        handle.send(ActorMessage::Move {
+            to: Position::new(20.0, 20.0),
+        });
         let effects = actor.drain_inbox();
         if let ActorEffect::Move { to, .. } = &effects[0] {
             actor.apply_move(*to, GridCell(2, 2));

@@ -2,10 +2,9 @@ use liveworld::agent_decision::{AgentDecisionLoop, DecisionConfig};
 use liveworld::circuit_breaker::CircuitBreaker;
 use liveworld::engine_api::EngineApi;
 use liveworld::global_agents::{
-    AntiCheatAgent, DirectorAgent, EconomyAgent, SharedSnapshot, WorldDirective,
-    process_directives,
+    process_directives, AntiCheatAgent, DirectorAgent, EconomyAgent, SharedSnapshot, WorldDirective,
 };
-use liveworld::llm_adapter::{MockLlm, create_adapter};
+use liveworld::llm_adapter::{create_adapter, MockLlm};
 use liveworld::metrics::run_http_server;
 use liveworld::persistence::{self, SnapshotStore};
 use liveworld::redis_sync::run_redis_sync;
@@ -16,7 +15,7 @@ use liveworld::world_engine::WorldEngine;
 use liveworld::ws_server::SharedEngine;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{Mutex as AsyncMutex, mpsc};
+use tokio::sync::{mpsc, Mutex as AsyncMutex};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -48,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         info!("Starting in single-node mode");
         Arc::new(Mutex::new(
-            Box::new(WorldEngine::new(cfg.clone())) as Box<dyn EngineApi + Send>,
+            Box::new(WorldEngine::new(cfg.clone())) as Box<dyn EngineApi + Send>
         ))
     };
 
@@ -68,7 +67,10 @@ async fn main() -> anyhow::Result<()> {
         match store.read_latest() {
             Ok(Some(snap)) => {
                 let specs = persistence::restore_actors(&snap);
-                info!(count = specs.len(), "Cold start: restoring world from snapshot");
+                info!(
+                    count = specs.len(),
+                    "Cold start: restoring world from snapshot"
+                );
                 let cb = Arc::new(CircuitBreaker::new(5, Duration::from_secs(30)));
                 for spec in specs {
                     let handle = {
@@ -109,21 +111,27 @@ async fn main() -> anyhow::Result<()> {
         let tx = dir_tx.clone();
         let c = Arc::clone(&cache);
         tokio::spawn(async move {
-            DirectorAgent::new(c, snap, tx, Duration::from_secs(10)).run().await;
+            DirectorAgent::new(c, snap, tx, Duration::from_secs(10))
+                .run()
+                .await;
         });
     }
     {
         let snap = Arc::clone(&world_snapshot);
         let tx = dir_tx.clone();
         tokio::spawn(async move {
-            EconomyAgent::new(snap, tx, Duration::from_secs(5)).run().await;
+            EconomyAgent::new(snap, tx, Duration::from_secs(5))
+                .run()
+                .await;
         });
     }
     {
         let snap = Arc::clone(&world_snapshot);
         let tx = dir_tx;
         tokio::spawn(async move {
-            AntiCheatAgent::new(snap, tx, Duration::from_millis(500), 200.0).run().await;
+            AntiCheatAgent::new(snap, tx, Duration::from_millis(500), 200.0)
+                .run()
+                .await;
         });
     }
 
@@ -170,7 +178,11 @@ async fn main() -> anyhow::Result<()> {
                     let mut eng = engine.lock().unwrap();
                     eng.tick();
                     let count = eng.tick_count();
-                    if count % 25 == 0 { Some(eng.full_snapshot()) } else { None }
+                    if count % 25 == 0 {
+                        Some(eng.full_snapshot())
+                    } else {
+                        None
+                    }
                 };
                 if let Some(states) = states_opt {
                     let local_ids: ahash::AHashSet<liveworld::types::ActorId> =
@@ -178,9 +190,8 @@ async fn main() -> anyhow::Result<()> {
                     if let Ok(mut shared) = snap.lock() {
                         // Remove actors that were local last tick but are gone now.
                         // Remote actors (not in prev_local_ids) are preserved.
-                        shared.retain(|id, _| {
-                            !prev_local_ids.contains(id) || local_ids.contains(id)
-                        });
+                        shared
+                            .retain(|id, _| !prev_local_ids.contains(id) || local_ids.contains(id));
                         for state in states {
                             shared.insert(state.id, state);
                         }
@@ -218,7 +229,9 @@ async fn main() -> anyhow::Result<()> {
 
     // ── Graceful shutdown ──────────────────────────────────────────────────────
     let shutdown = tokio::spawn(async {
-        tokio::signal::ctrl_c().await.expect("Ctrl-C listener failed");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Ctrl-C listener failed");
         info!("Shutdown signal received — exiting.");
     });
 

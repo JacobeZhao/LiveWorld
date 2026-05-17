@@ -1,3 +1,4 @@
+use futures_util::{SinkExt, StreamExt};
 /// WebSocket integration tests.
 ///
 /// These tests start a real server on a random port, connect via WebSocket,
@@ -12,7 +13,6 @@ use liveworld::ws_server::SharedEngine;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use futures_util::{SinkExt, StreamExt};
 
 async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
     // Bind on port 0 so the OS picks a free port.
@@ -24,7 +24,7 @@ async fn start_test_server() -> (u16, tokio::task::JoinHandle<()>) {
     cfg.ws_port = port;
 
     let engine: SharedEngine = Arc::new(Mutex::new(
-        Box::new(WorldEngine::new(cfg.clone())) as Box<dyn EngineApi + Send>,
+        Box::new(WorldEngine::new(cfg.clone())) as Box<dyn EngineApi + Send>
     ));
     let snapshot: SharedSnapshot = Arc::new(Mutex::new(ahash::AHashMap::new()));
 
@@ -81,7 +81,11 @@ async fn test_move_actor() {
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
     };
-    ws.send(Message::Text(serde_json::to_string(&create).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(
+        serde_json::to_string(&create).unwrap().into(),
+    ))
+    .await
+    .unwrap();
 
     let actor_id = match ws.next().await {
         Some(Ok(Message::Binary(b))) => {
@@ -98,7 +102,9 @@ async fn test_move_actor() {
         actor_id,
         to: Position::new(500.0, 500.0),
     };
-    ws.send(Message::Text(serde_json::to_string(&mv).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(serde_json::to_string(&mv).unwrap().into()))
+        .await
+        .unwrap();
 
     // No error response expected — success is silent.
     ws.close(None).await.ok();
@@ -121,11 +127,19 @@ async fn test_duplicate_actor_rejected() {
     };
 
     // First creation succeeds.
-    ws.send(Message::Text(serde_json::to_string(&create()).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(
+        serde_json::to_string(&create()).unwrap().into(),
+    ))
+    .await
+    .unwrap();
     let _ = ws.next().await; // consume ActorCreated
 
     // Second creation on the same session should fail with 409.
-    ws.send(Message::Text(serde_json::to_string(&create()).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(
+        serde_json::to_string(&create()).unwrap().into(),
+    ))
+    .await
+    .unwrap();
     if let Some(Ok(Message::Binary(b))) = ws.next().await {
         match serde_json::from_slice::<ServerMessage>(&b).unwrap() {
             ServerMessage::Error { code, .. } => assert_eq!(code, 409),
@@ -151,7 +165,11 @@ async fn test_name_too_long_rejected() {
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
     };
-    ws.send(Message::Text(serde_json::to_string(&create).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(
+        serde_json::to_string(&create).unwrap().into(),
+    ))
+    .await
+    .unwrap();
 
     if let Some(Ok(Message::Binary(b))) = ws.next().await {
         match serde_json::from_slice::<ServerMessage>(&b).unwrap() {
@@ -179,7 +197,11 @@ async fn test_rate_limit_enforced() {
         model: LlmModel::Mock,
         position: Position::new(0.0, 0.0),
     };
-    ws.send(Message::Text(serde_json::to_string(&create).unwrap().into())).await.unwrap();
+    ws.send(Message::Text(
+        serde_json::to_string(&create).unwrap().into(),
+    ))
+    .await
+    .unwrap();
     let _ = ws.next().await; // consume ActorCreated
 
     // Flood with move commands — some should be rate-limited.
@@ -188,7 +210,9 @@ async fn test_rate_limit_enforced() {
             actor_id: liveworld::types::ActorId(1),
             to: Position::new(i as f32, 0.0),
         };
-        ws.send(Message::Text(serde_json::to_string(&mv).unwrap().into())).await.unwrap();
+        ws.send(Message::Text(serde_json::to_string(&mv).unwrap().into()))
+            .await
+            .unwrap();
     }
 
     // Read responses — expect at least one 429.

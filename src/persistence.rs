@@ -52,9 +52,7 @@ impl PersistedSpec {
             "claude-sonnet-4-6" => LlmModel::ClaudeSonnet,
             "claude-opus-4-7" => LlmModel::ClaudeOpus,
             "mock" => LlmModel::Mock,
-            other if other.starts_with("ollama/") => {
-                LlmModel::Ollama(other[7..].to_string())
-            }
+            other if other.starts_with("ollama/") => LlmModel::Ollama(other[7..].to_string()),
             _ => LlmModel::Mock,
         };
         ActorSpec {
@@ -86,8 +84,7 @@ impl SnapshotStore {
         let filename = format!("snapshot_{:020}.bin", snapshot.tick);
         let path = self.dir.join(&filename);
 
-        let bytes = bincode::serialize(snapshot)
-            .context("Failed to serialize snapshot")?;
+        let bytes = bincode::serialize(snapshot).context("Failed to serialize snapshot")?;
         fs::write(&path, &bytes)
             .with_context(|| format!("Failed to write snapshot to {}", path.display()))?;
 
@@ -108,8 +105,7 @@ impl SnapshotStore {
             return Ok(None);
         }
 
-        let filename = fs::read_to_string(&latest_path)
-            .context("Failed to read latest pointer")?;
+        let filename = fs::read_to_string(&latest_path).context("Failed to read latest pointer")?;
         let path = self.dir.join(filename.trim());
 
         if !path.exists() {
@@ -119,10 +115,14 @@ impl SnapshotStore {
 
         let bytes = fs::read(&path)
             .with_context(|| format!("Failed to read snapshot from {}", path.display()))?;
-        let snapshot: WorldSnapshot = bincode::deserialize(&bytes)
-            .context("Failed to deserialize snapshot")?;
+        let snapshot: WorldSnapshot =
+            bincode::deserialize(&bytes).context("Failed to deserialize snapshot")?;
 
-        info!(tick = snapshot.tick, actors = snapshot.actors.len(), "Snapshot loaded");
+        info!(
+            tick = snapshot.tick,
+            actors = snapshot.actors.len(),
+            "Snapshot loaded"
+        );
         Ok(Some(snapshot))
     }
 

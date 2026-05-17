@@ -3,7 +3,7 @@
 // The encoder maintains a pre-allocated reusable buffer to avoid heap churn
 // on the hot broadcast path.
 
-use crate::types::{ActorId, ActorState, StateDelta, now_ms};
+use crate::types::{now_ms, ActorId, ActorState, StateDelta};
 use anyhow::Result;
 
 pub struct StateEncoder {
@@ -27,11 +27,7 @@ impl StateEncoder {
     }
 
     /// Build a StateDelta from the given actor states and removed IDs.
-    pub fn build_delta(
-        tick: u64,
-        updates: Vec<ActorState>,
-        removed: Vec<ActorId>,
-    ) -> StateDelta {
+    pub fn build_delta(tick: u64, updates: Vec<ActorState>, removed: Vec<ActorId>) -> StateDelta {
         StateDelta {
             tick,
             timestamp_ms: now_ms(),
@@ -55,10 +51,8 @@ pub fn diff_states(
 ) -> (Vec<ActorState>, Vec<ActorId>) {
     use std::collections::HashMap;
 
-    let prev_map: HashMap<ActorId, &ActorState> =
-        previous.iter().map(|s| (s.id, s)).collect();
-    let curr_map: HashMap<ActorId, &ActorState> =
-        current.iter().map(|s| (s.id, s)).collect();
+    let prev_map: HashMap<ActorId, &ActorState> = previous.iter().map(|s| (s.id, s)).collect();
+    let curr_map: HashMap<ActorId, &ActorState> = current.iter().map(|s| (s.id, s)).collect();
 
     let mut changed = Vec::new();
     for (&id, &curr) in &curr_map {
@@ -105,11 +99,8 @@ mod tests {
     #[test]
     fn encode_decode_roundtrip() {
         let mut enc = StateEncoder::new(4096);
-        let delta = StateEncoder::build_delta(
-            42,
-            vec![make_state(1, 1.0, 2.0, 42)],
-            vec![ActorId(99)],
-        );
+        let delta =
+            StateEncoder::build_delta(42, vec![make_state(1, 1.0, 2.0, 42)], vec![ActorId(99)]);
         let bytes = enc.encode(&delta).unwrap().to_vec();
         let back = StateEncoder::decode(&bytes).unwrap();
         assert_eq!(back.tick, 42);
@@ -149,7 +140,8 @@ mod tests {
     fn buffer_reuse_across_ticks() {
         let mut enc = StateEncoder::new(256);
         for tick in 0..100u64 {
-            let delta = StateEncoder::build_delta(tick, vec![make_state(1, 0.0, 0.0, tick)], vec![]);
+            let delta =
+                StateEncoder::build_delta(tick, vec![make_state(1, 0.0, 0.0, tick)], vec![]);
             let _bytes = enc.encode(&delta).unwrap();
         }
         // No panic = buffer reuse works correctly

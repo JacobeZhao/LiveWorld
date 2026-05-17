@@ -97,7 +97,11 @@ impl SemanticCache {
     pub fn hit_rate(&self) -> f64 {
         let h = self.hits.load(Ordering::Relaxed) as f64;
         let m = self.misses.load(Ordering::Relaxed) as f64;
-        if h + m == 0.0 { 0.0 } else { h / (h + m) }
+        if h + m == 0.0 {
+            0.0
+        } else {
+            h / (h + m)
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -180,9 +184,9 @@ mod tests {
 
     #[tokio::test]
     async fn hit_latency_is_fast() {
-        use std::time::Instant;
-        use std::time::Duration;
         use crate::llm_adapter::MockLlm;
+        use std::time::Duration;
+        use std::time::Instant;
         // Mock with 100ms delay — cache should bypass it
         let slow_mock = Arc::new(MockLlm::new().with_delay(Duration::from_millis(100)));
         let mut cache = SemanticCache::new(10, slow_mock);

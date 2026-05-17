@@ -132,7 +132,6 @@ impl ActorRuntime {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,7 +170,9 @@ mod tests {
     fn tick_applies_move_effect() {
         let mut rt = ActorRuntime::new(WorldConfig::default());
         let handle = rt.spawn_actor(make_spec(42, 0.0, 0.0));
-        handle.send(ActorMessage::Move { to: Position::new(50.0, 50.0) });
+        handle.send(ActorMessage::Move {
+            to: Position::new(50.0, 50.0),
+        });
         let effects = rt.tick(1);
         assert!(!effects.is_empty(), "Expected at least one Move effect");
         // After tick, actor state should reflect new position
@@ -195,8 +196,12 @@ mod tests {
         let mut rt = ActorRuntime::new(WorldConfig::default());
         let h1 = rt.spawn_actor(make_spec(1, 5.0, 5.0));
         let h2 = rt.spawn_actor(make_spec(2, 5.0, 5.0));
-        h1.send(ActorMessage::Move { to: Position::new(500.0, 500.0) });
-        h2.send(ActorMessage::Move { to: Position::new(500.0, 500.0) });
+        h1.send(ActorMessage::Move {
+            to: Position::new(500.0, 500.0),
+        });
+        h2.send(ActorMessage::Move {
+            to: Position::new(500.0, 500.0),
+        });
         rt.tick(1);
 
         // Both actors should now be in the same far cell

@@ -52,10 +52,12 @@ pub async fn run_http_server(engine: SharedEngine, port: u16) -> Result<()> {
                     let req = std::str::from_utf8(&buf[..n]).unwrap_or("");
                     let first_line = req.lines().next().unwrap_or("");
                     let method = first_line.split_whitespace().next().unwrap_or("GET");
-                    let path   = first_line.split_whitespace().nth(1).unwrap_or("/");
+                    let path = first_line.split_whitespace().nth(1).unwrap_or("/");
 
                     // Body (for POST requests): text after the blank line
-                    let body_str = req.split("\r\n\r\n").nth(1)
+                    let body_str = req
+                        .split("\r\n\r\n")
+                        .nth(1)
                         .or_else(|| req.split("\n\n").nth(1))
                         .unwrap_or("")
                         .trim();
@@ -99,9 +101,9 @@ pub async fn handle_request(
                     eng.uptime_secs(),
                 )
             };
-            let llm_calls  = LLM_CALLS_TOTAL.load(Ordering::Relaxed);
+            let llm_calls = LLM_CALLS_TOTAL.load(Ordering::Relaxed);
             let llm_errors = LLM_ERRORS_TOTAL.load(Ordering::Relaxed);
-            let ws_active  = WS_CONNECTIONS_ACTIVE.load(Ordering::Relaxed);
+            let ws_active = WS_CONNECTIONS_ACTIVE.load(Ordering::Relaxed);
 
             let body = format!(
                 "# HELP liveworld_actors_total Active actor count\n\
@@ -169,7 +171,11 @@ pub async fn handle_request(
                 ),
                 Some(j) => {
                     crate::auth::revoke_token(&j);
-                    ("200 OK", "application/json", r#"{"status":"revoked"}"#.to_string())
+                    (
+                        "200 OK",
+                        "application/json",
+                        r#"{"status":"revoked"}"#.to_string(),
+                    )
                 }
             }
         }

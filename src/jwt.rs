@@ -1,6 +1,6 @@
 /// Minimal HS256 JWT implementation (pure Rust, no ring dependency).
 /// Uses hmac + sha2 + base64 from the RustCrypto family.
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -25,7 +25,12 @@ pub struct Claims {
 pub fn issue(sub: &str, secret: &[u8], ttl_secs: u64) -> anyhow::Result<String> {
     let now = now_secs();
     let jti = format!("{sub}-{now}");
-    let claims = Claims { sub: sub.to_owned(), iat: now, exp: now + ttl_secs, jti };
+    let claims = Claims {
+        sub: sub.to_owned(),
+        iat: now,
+        exp: now + ttl_secs,
+        jti,
+    };
     let header_b64 = URL_SAFE_NO_PAD.encode(HEADER);
     let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims)?);
     let signing_input = format!("{header_b64}.{payload_b64}");
@@ -52,8 +57,8 @@ pub fn validate(token: &str, secret: &[u8]) -> anyhow::Result<Claims> {
 }
 
 fn sign(data: &str, secret: &[u8]) -> anyhow::Result<String> {
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .map_err(|e| anyhow::anyhow!("HMAC key error: {e}"))?;
+    let mut mac =
+        HmacSha256::new_from_slice(secret).map_err(|e| anyhow::anyhow!("HMAC key error: {e}"))?;
     mac.update(data.as_bytes());
     Ok(URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()))
 }
@@ -95,7 +100,7 @@ mod tests {
     #[test]
     fn expired_token_rejected() {
         let token = issue("u", SECRET, 0).unwrap(); // expires immediately (ttl=0)
-        // Give it 1 second to expire
+                                                    // Give it 1 second to expire
         std::thread::sleep(std::time::Duration::from_secs(1));
         assert!(validate(&token, SECRET).is_err());
     }

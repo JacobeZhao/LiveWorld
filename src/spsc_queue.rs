@@ -46,8 +46,7 @@ impl<T, const N: usize> SpscInner<T, N> {
         assert!(is_power_of_two(N), "SpscQueue capacity must be power of 2");
         // SAFETY: MaybeUninit array initialisation.
         let buf = unsafe {
-            let mut arr: [UnsafeCell<MaybeUninit<T>>; N] =
-                MaybeUninit::uninit().assume_init();
+            let mut arr: [UnsafeCell<MaybeUninit<T>>; N] = MaybeUninit::uninit().assume_init();
             for slot in &mut arr {
                 *slot = UnsafeCell::new(MaybeUninit::uninit());
             }
@@ -86,7 +85,9 @@ impl<T, const N: usize> SpscInner<T, N> {
         }
         // SAFETY: Consumer owns this slot; item was written by producer.
         let item = unsafe { (*self.buf[head & Self::MASK].get()).assume_init_read() };
-        self.head.value.store(head.wrapping_add(1), Ordering::Release);
+        self.head
+            .value
+            .store(head.wrapping_add(1), Ordering::Release);
         Some(item)
     }
 
@@ -117,7 +118,9 @@ pub struct SpscProducer<T, const N: usize> {
 
 impl<T, const N: usize> Clone for SpscProducer<T, N> {
     fn clone(&self) -> Self {
-        SpscProducer { inner: Arc::clone(&self.inner) }
+        SpscProducer {
+            inner: Arc::clone(&self.inner),
+        }
     }
 }
 
@@ -131,7 +134,9 @@ pub struct SpscConsumer<T, const N: usize> {
 pub fn spsc_queue<T, const N: usize>() -> (SpscProducer<T, N>, SpscConsumer<T, N>) {
     let inner = Arc::new(SpscInner::<T, N>::new());
     (
-        SpscProducer { inner: Arc::clone(&inner) },
+        SpscProducer {
+            inner: Arc::clone(&inner),
+        },
         SpscConsumer { inner },
     )
 }

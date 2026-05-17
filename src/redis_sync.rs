@@ -40,8 +40,8 @@ pub async fn run_redis_sync(local_snapshot: SharedSnapshot) -> Result<()> {
         }
     };
 
-    let pod_id = std::env::var("POD_NAME")
-        .unwrap_or_else(|_| format!("pod-{}", std::process::id()));
+    let pod_id =
+        std::env::var("POD_NAME").unwrap_or_else(|_| format!("pod-{}", std::process::id()));
 
     info!(%url, %pod_id, "Redis cross-pod sync enabled");
 
@@ -63,11 +63,7 @@ pub async fn run_redis_sync(local_snapshot: SharedSnapshot) -> Result<()> {
     Ok(())
 }
 
-async fn publisher_loop(
-    client: redis::Client,
-    snap: SharedSnapshot,
-    pod_id: String,
-) {
+async fn publisher_loop(client: redis::Client, snap: SharedSnapshot, pod_id: String) {
     let mut ticker = tokio::time::interval(Duration::from_millis(PUBLISH_INTERVAL_MS));
     let mut prev: ahash::AHashMap<ActorId, ActorState> = ahash::AHashMap::new();
     let mut backoff_ms = RECONNECT_BASE_MS;
@@ -89,8 +85,7 @@ async fn publisher_loop(
             }
         };
 
-        let current: ahash::AHashMap<ActorId, ActorState> =
-            snap.lock().unwrap().clone();
+        let current: ahash::AHashMap<ActorId, ActorState> = snap.lock().unwrap().clone();
 
         // Compute delta.
         let updates: Vec<ActorState> = current
@@ -110,7 +105,11 @@ async fn publisher_loop(
             continue;
         }
 
-        let payload = SyncPayload { pod_id: pod_id.clone(), updates, removed };
+        let payload = SyncPayload {
+            pod_id: pod_id.clone(),
+            updates,
+            removed,
+        };
         match serde_json::to_string(&payload) {
             Ok(json) => {
                 let res: std::result::Result<i64, _> = conn.publish(CHANNEL, &json).await;
@@ -123,11 +122,7 @@ async fn publisher_loop(
     }
 }
 
-async fn subscriber_loop(
-    client: redis::Client,
-    local_snapshot: SharedSnapshot,
-    pod_id: String,
-) {
+async fn subscriber_loop(client: redis::Client, local_snapshot: SharedSnapshot, pod_id: String) {
     let mut backoff_ms = RECONNECT_BASE_MS;
     loop {
         match client.get_async_connection().await {

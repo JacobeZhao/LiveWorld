@@ -1,10 +1,10 @@
 use crate::actor::ActorHandle;
 use crate::actor_runtime::ActorRuntime;
 use crate::interest_manager::InterestManager;
-use crate::state_encoder::{StateEncoder, diff_states};
+use crate::state_encoder::{diff_states, StateEncoder};
 use crate::types::{
-    ActorId, ActorMessage, ActorSpec, ActorState, GridCell, Position, SessionId, StateDelta,
-    WorldConfig, WorldDirective, now_ms,
+    now_ms, ActorId, ActorMessage, ActorSpec, ActorState, GridCell, Position, SessionId,
+    StateDelta, WorldConfig, WorldDirective,
 };
 use ahash::AHashMap;
 use std::collections::VecDeque;
@@ -58,7 +58,9 @@ impl WorldEngine {
         let handle = self.runtime.spawn_actor(spec);
 
         // Determine the initial cell.
-        let cell = self.runtime.snapshot_all()
+        let cell = self
+            .runtime
+            .snapshot_all()
             .into_iter()
             .find(|s| s.id == id)
             .map(|s| s.cell)
@@ -70,7 +72,12 @@ impl WorldEngine {
     }
 
     /// Register a session (called by spawn_actor_for_session; also usable standalone).
-    pub fn add_session(&mut self, session: SessionId, anchor: ActorId, cell: GridCell) -> SessionQueue {
+    pub fn add_session(
+        &mut self,
+        session: SessionId,
+        anchor: ActorId,
+        cell: GridCell,
+    ) -> SessionQueue {
         let q: SessionQueue = Arc::new(Mutex::new(VecDeque::with_capacity(16)));
         self.session_queues.insert(session, Arc::clone(&q));
         self.interest.register(session, anchor, cell);
@@ -144,7 +151,9 @@ impl WorldEngine {
         for effect in &effects {
             use crate::actor::ActorEffect;
             if let ActorEffect::Move { id, .. } = effect {
-                if let Some(snap) = self.runtime.snapshot_all()
+                if let Some(snap) = self
+                    .runtime
+                    .snapshot_all()
                     .into_iter()
                     .find(|s| s.id == *id)
                 {
@@ -210,12 +219,24 @@ impl WorldEngine {
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
-    pub fn tick_count(&self) -> u64 { self.tick_count }
-    pub fn actor_count(&self) -> usize { self.runtime.actor_count() }
-    pub fn session_count(&self) -> usize { self.session_queues.len() }
-    pub fn uptime_secs(&self) -> u64 { self.start_time.elapsed().as_secs() }
-    pub fn full_snapshot(&self) -> Vec<ActorState> { self.runtime.snapshot_all() }
-    pub fn config(&self) -> &WorldConfig { &self.cfg }
+    pub fn tick_count(&self) -> u64 {
+        self.tick_count
+    }
+    pub fn actor_count(&self) -> usize {
+        self.runtime.actor_count()
+    }
+    pub fn session_count(&self) -> usize {
+        self.session_queues.len()
+    }
+    pub fn uptime_secs(&self) -> u64 {
+        self.start_time.elapsed().as_secs()
+    }
+    pub fn full_snapshot(&self) -> Vec<ActorState> {
+        self.runtime.snapshot_all()
+    }
+    pub fn config(&self) -> &WorldConfig {
+        &self.cfg
+    }
 
     /// Spawn an actor without registering a session (cold-start recovery).
     pub fn spawn_actor_standalone(&mut self, spec: ActorSpec) -> ActorHandle {
@@ -280,7 +301,9 @@ mod tests {
         let sid = SessionId::next();
         let (handle, q) = engine.spawn_actor_for_session(make_spec(1, 5.0, 5.0), sid);
         // Move the actor so a delta is generated.
-        handle.send(ActorMessage::Move { to: Position::new(50.0, 50.0) });
+        handle.send(ActorMessage::Move {
+            to: Position::new(50.0, 50.0),
+        });
         engine.tick();
         let queue = q.lock().unwrap();
         assert!(!queue.is_empty(), "Session should have received a delta");
@@ -293,7 +316,9 @@ mod tests {
         engine.spawn_actor_for_session(make_spec(1, 0.0, 0.0), sid);
         let h = engine.session_handle(sid);
         assert!(h.is_some(), "Should return handle for session actor");
-        h.unwrap().send(ActorMessage::Move { to: Position::new(10.0, 10.0) });
+        h.unwrap().send(ActorMessage::Move {
+            to: Position::new(10.0, 10.0),
+        });
     }
 
     #[test]
@@ -316,6 +341,10 @@ mod tests {
             engine.tick();
         }
         let avg = start.elapsed() / 100;
-        assert!(avg < Duration::from_millis(2), "Tick avg {:?} too slow", avg);
+        assert!(
+            avg < Duration::from_millis(2),
+            "Tick avg {:?} too slow",
+            avg
+        );
     }
 }

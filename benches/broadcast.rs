@@ -3,8 +3,8 @@
 // DoD target P3: P99 ≤ 5 ms for 1000 sessions.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use liveworld::state_encoder::{StateEncoder, diff_states};
-use liveworld::types::{ActorId, ActorState, GridCell, Position, StateDelta, now_ms};
+use liveworld::state_encoder::{diff_states, StateEncoder};
+use liveworld::types::{now_ms, ActorId, ActorState, GridCell, Position, StateDelta};
 use std::time::{Duration, Instant};
 
 fn make_state(id: u64, x: f32) -> ActorState {
@@ -50,23 +50,18 @@ fn bench_diff_states(c: &mut Criterion) {
     let mut group = c.benchmark_group("diff_states");
 
     for n_actors in [1_000, 10_000] {
-        group.bench_with_input(
-            BenchmarkId::new("diff", n_actors),
-            &n_actors,
-            |b, &n| {
-                let prev: Vec<ActorState> =
-                    (0..n as u64).map(|i| make_state(i, i as f32)).collect();
-                // 10% of actors moved
-                let mut curr = prev.clone();
-                for i in (0..n).step_by(10) {
-                    curr[i].position.x += 5.0;
-                    curr[i].tick += 1;
-                }
-                b.iter(|| {
-                    black_box(diff_states(black_box(&prev), black_box(&curr)));
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("diff", n_actors), &n_actors, |b, &n| {
+            let prev: Vec<ActorState> = (0..n as u64).map(|i| make_state(i, i as f32)).collect();
+            // 10% of actors moved
+            let mut curr = prev.clone();
+            for i in (0..n).step_by(10) {
+                curr[i].position.x += 5.0;
+                curr[i].tick += 1;
+            }
+            b.iter(|| {
+                black_box(diff_states(black_box(&prev), black_box(&curr)));
+            });
+        });
     }
 
     group.finish();
@@ -79,8 +74,7 @@ fn bench_broadcast_latency_1000_sessions(c: &mut Criterion) {
 
     group.bench_function("full_pipeline_1000_actors", |b| {
         let mut enc = StateEncoder::new(8 * 1024 * 1024);
-        let states: Vec<ActorState> =
-            (0..1000u64).map(|i| make_state(i, i as f32)).collect();
+        let states: Vec<ActorState> = (0..1000u64).map(|i| make_state(i, i as f32)).collect();
 
         let mut samples: Vec<u64> = Vec::with_capacity(1000);
 

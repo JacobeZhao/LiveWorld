@@ -111,7 +111,7 @@ impl OpenAiClient {
 #[async_trait]
 impl LlmAdapter for OpenAiClient {
     async fn complete(&self, req: LlmRequest) -> Result<LlmResponse> {
-        use serde_json::{Value, json};
+        use serde_json::{json, Value};
 
         let body = json!({
             "model": req.model.to_string(),
@@ -176,7 +176,7 @@ impl AnthropicClient {
 #[async_trait]
 impl LlmAdapter for AnthropicClient {
     async fn complete(&self, req: LlmRequest) -> Result<LlmResponse> {
-        use serde_json::{Value, json};
+        use serde_json::{json, Value};
 
         let body = json!({
             "model": self.model.to_string(),
@@ -243,7 +243,7 @@ impl OllamaClient {
 #[async_trait]
 impl LlmAdapter for OllamaClient {
     async fn complete(&self, req: LlmRequest) -> Result<LlmResponse> {
-        use serde_json::{Value, json};
+        use serde_json::{json, Value};
 
         let model_name = match &self.model {
             LlmModel::Ollama(n) => n.clone(),

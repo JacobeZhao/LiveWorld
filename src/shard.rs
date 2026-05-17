@@ -12,8 +12,7 @@
 use crate::actor::ActorHandle;
 use crate::engine_api::EngineApi;
 use crate::types::{
-    ActorId, ActorMessage, ActorSpec, ActorState, Position, SessionId, WorldConfig,
-    WorldDirective,
+    ActorId, ActorMessage, ActorSpec, ActorState, Position, SessionId, WorldConfig, WorldDirective,
 };
 use crate::world_engine::{SessionQueue, WorldEngine};
 use ahash::AHashMap;
@@ -40,9 +39,7 @@ impl ShardedEngine {
             .collect();
         info!(
             shard_count,
-            shard_width,
-            world_width,
-            "ShardedEngine initialised"
+            shard_width, world_width, "ShardedEngine initialised"
         );
         Self {
             shards,
@@ -87,7 +84,10 @@ impl EngineApi for ShardedEngine {
                         return;
                     }
                 }
-                warn!(actor = actor_id.0, "ForceMove: actor not found in any shard");
+                warn!(
+                    actor = actor_id.0,
+                    "ForceMove: actor not found in any shard"
+                );
             }
             WorldDirective::FlagActor { actor_id, reason } => {
                 warn!(actor = actor_id.0, reason, "Actor flagged");
@@ -134,7 +134,9 @@ impl EngineApi for ShardedEngine {
     }
 
     fn world_snapshot_for_persist(&self) -> crate::persistence::WorldSnapshot {
-        let actors = self.shards.iter()
+        let actors = self
+            .shards
+            .iter()
             .flat_map(|s| s.world_snapshot_for_persist().actors)
             .collect();
         crate::persistence::WorldSnapshot {

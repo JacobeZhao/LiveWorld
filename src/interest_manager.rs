@@ -137,7 +137,10 @@ mod tests {
     fn no_leakage_invariant_random() {
         // Place actors randomly and assert that for any session with radius R,
         // no actor outside R is in the visible set.
-        let cfg = WorldConfig { interest_radius: 3, ..Default::default() };
+        let cfg = WorldConfig {
+            interest_radius: 3,
+            ..Default::default()
+        };
         let mut grid = SpatialGrid::new(&cfg);
         let mut im = InterestManager::new(cfg.interest_radius);
 

@@ -24,7 +24,9 @@ pub struct CircuitBreaker {
 impl CircuitBreaker {
     pub fn new(failure_threshold: u32, reset_timeout: Duration) -> Self {
         Self {
-            state: Mutex::new(State::Closed { consecutive_failures: 0 }),
+            state: Mutex::new(State::Closed {
+                consecutive_failures: 0,
+            }),
             failure_threshold,
             reset_timeout,
         }
@@ -50,29 +52,41 @@ impl CircuitBreaker {
 
     pub fn record_success(&self) {
         let mut st = self.state.lock().unwrap();
-        if !matches!(*st, State::Closed { consecutive_failures: 0 }) {
+        if !matches!(
+            *st,
+            State::Closed {
+                consecutive_failures: 0
+            }
+        ) {
             info!("Circuit breaker → Closed");
         }
-        *st = State::Closed { consecutive_failures: 0 };
+        *st = State::Closed {
+            consecutive_failures: 0,
+        };
     }
 
     pub fn record_failure(&self) {
         let mut st = self.state.lock().unwrap();
         match *st {
-            State::Closed { consecutive_failures } => {
+            State::Closed {
+                consecutive_failures,
+            } => {
                 let n = consecutive_failures + 1;
                 if n >= self.failure_threshold {
-                    *st = State::Open { opened_at: Instant::now() };
-                    warn!(
-                        threshold = self.failure_threshold,
-                        "Circuit breaker → Open"
-                    );
+                    *st = State::Open {
+                        opened_at: Instant::now(),
+                    };
+                    warn!(threshold = self.failure_threshold, "Circuit breaker → Open");
                 } else {
-                    *st = State::Closed { consecutive_failures: n };
+                    *st = State::Closed {
+                        consecutive_failures: n,
+                    };
                 }
             }
             State::HalfOpen => {
-                *st = State::Open { opened_at: Instant::now() };
+                *st = State::Open {
+                    opened_at: Instant::now(),
+                };
                 warn!("Circuit breaker → Open (probe failed)");
             }
             State::Open { .. } => {}

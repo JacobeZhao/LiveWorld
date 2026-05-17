@@ -10,8 +10,8 @@ use crate::llm_adapter::create_adapter;
 use crate::metrics;
 use crate::semantic_cache::SemanticCache;
 use crate::types::{
-    ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage,
-    SessionId, WorldConfig,
+    ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage, SessionId,
+    WorldConfig,
 };
 use crate::world_engine::SessionQueue;
 use ahash::AHashMap;
@@ -23,7 +23,7 @@ use std::time::Instant;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{Duration, interval};
+use tokio::time::{interval, Duration};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
@@ -41,7 +41,10 @@ struct ConnectionLimiter {
 
 impl ConnectionLimiter {
     fn new(max_per_ip: u32) -> Self {
-        Self { counts: AHashMap::new(), max_per_ip }
+        Self {
+            counts: AHashMap::new(),
+            max_per_ip,
+        }
     }
 
     fn try_acquire(&mut self, ip: IpAddr) -> bool {
@@ -74,7 +77,11 @@ struct RateLimiter {
 
 impl RateLimiter {
     fn new(limit: u32) -> Self {
-        Self { count: 0, window_start: Instant::now(), limit }
+        Self {
+            count: 0,
+            window_start: Instant::now(),
+            limit,
+        }
     }
 
     fn allow(&mut self) -> bool {
@@ -134,7 +141,11 @@ pub async fn run_ws_server(
     info!("WebSocket server listening on {}", addr);
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<EngineCommand>(4096);
-    tokio::spawn(command_processor(cmd_rx, Arc::clone(&engine), world_snapshot));
+    tokio::spawn(command_processor(
+        cmd_rx,
+        Arc::clone(&engine),
+        world_snapshot,
+    ));
 
     let limiter = Arc::new(Mutex::new(ConnectionLimiter::new(10))); // max 10 connections per IP
 
@@ -177,10 +188,7 @@ async fn command_processor(
     // Per-session AgentDecisionLoop join handles — aborted on disconnect/destroy.
     let mut decision_handles: AHashMap<SessionId, tokio::task::JoinHandle<()>> = AHashMap::new();
     // Shared LLM cache per model type (lazy-initialised).
-    let mut llm_caches: AHashMap<
-        String,
-        Arc<tokio::sync::Mutex<SemanticCache>>,
-    > = AHashMap::new();
+    let mut llm_caches: AHashMap<String, Arc<tokio::sync::Mutex<SemanticCache>>> = AHashMap::new();
     // One circuit breaker shared across all agents on this pod.
     let circuit_breaker = Arc::new(CircuitBreaker::new(5, Duration::from_secs(30)));
 
@@ -214,7 +222,14 @@ async fn command_processor(
                 let id = ActorId::next();
                 let model_key = model.to_string();
                 let model_for_cache = model.clone();
-                let spec = ActorSpec { id, name, personality, backstory, model, position };
+                let spec = ActorSpec {
+                    id,
+                    name,
+                    personality,
+                    backstory,
+                    model,
+                    position,
+                };
                 let spec_for_dl = spec.clone();
                 let (handle, queue) = {
                     let mut eng = engine.lock().unwrap();
@@ -246,10 +261,7 @@ async fn command_processor(
             }
 
             EngineCommand::MoveActor { session, to } => {
-                let to = Position::new(
-                    to.x.clamp(0.0, 9_999.0),
-                    to.y.clamp(0.0, 9_999.0),
-                );
+                let to = Position::new(to.x.clamp(0.0, 9_999.0), to.y.clamp(0.0, 9_999.0));
                 if let Some(handle) = session_handles.get(&session) {
                     handle.send(ActorMessage::Move { to });
                 }
@@ -264,7 +276,10 @@ async fn command_processor(
                 }
             }
 
-            EngineCommand::DestroyActor { session, actor_id: _ } => {
+            EngineCommand::DestroyActor {
+                session,
+                actor_id: _,
+            } => {
                 session_handles.remove(&session);
                 if let Some(jh) = decision_handles.remove(&session) {
                     jh.abort();
@@ -299,8 +314,10 @@ async fn serve_http(mut stream: TcpStream, engine: SharedEngine) {
     let req = std::str::from_utf8(&buf[..n]).unwrap_or("");
     let first_line = req.lines().next().unwrap_or("");
     let method = first_line.split_whitespace().next().unwrap_or("GET");
-    let path   = first_line.split_whitespace().nth(1).unwrap_or("/");
-    let body   = req.split("\r\n\r\n").nth(1)
+    let path = first_line.split_whitespace().nth(1).unwrap_or("/");
+    let body = req
+        .split("\r\n\r\n")
+        .nth(1)
         .or_else(|| req.split("\n\n").nth(1))
         .unwrap_or("")
         .trim();
@@ -446,7 +463,9 @@ async fn handle_connection(
     }
     out_task.abort();
     metrics::dec_ws_connections();
-    let _ = cmd_tx.send(EngineCommand::SessionDisconnect { session }).await;
+    let _ = cmd_tx
+        .send(EngineCommand::SessionDisconnect { session })
+        .await;
     info!(session = session.0, %addr, "Connection closed");
 }
 
@@ -522,7 +541,9 @@ async fn handle_client_command(
         }
 
         ClientCommand::ChatActor { text, .. } => {
-            let _ = cmd_tx.send(EngineCommand::ChatActor { session, text }).await;
+            let _ = cmd_tx
+                .send(EngineCommand::ChatActor { session, text })
+                .await;
         }
 
         ClientCommand::DestroyActor { actor_id } => {
@@ -577,7 +598,9 @@ mod tests {
 
     #[test]
     fn server_message_serializes() {
-        let msg = ServerMessage::ActorCreated { actor_id: ActorId(42) };
+        let msg = ServerMessage::ActorCreated {
+            actor_id: ActorId(42),
+        };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("ActorCreated"));
         assert!(json.contains("42"));
@@ -593,9 +616,11 @@ mod tests {
     #[tokio::test]
     async fn command_channel_round_trip() {
         let (tx, mut rx) = mpsc::channel::<EngineCommand>(8);
-        tx.send(EngineCommand::SessionDisconnect { session: SessionId(999) })
-            .await
-            .unwrap();
+        tx.send(EngineCommand::SessionDisconnect {
+            session: SessionId(999),
+        })
+        .await
+        .unwrap();
         let cmd = rx.recv().await.unwrap();
         assert!(matches!(cmd, EngineCommand::SessionDisconnect { .. }));
     }

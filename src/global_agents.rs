@@ -4,7 +4,7 @@
 // They never run on the tick thread.
 
 use crate::engine_api::EngineApi;
-use crate::llm_adapter::{LlmRequest};
+use crate::llm_adapter::LlmRequest;
 use crate::semantic_cache::SemanticCache;
 use crate::types::{ActorId, ActorState, LlmModel};
 use std::sync::{Arc, Mutex};
@@ -54,7 +54,8 @@ impl DirectorAgent {
     }
 
     pub fn decision_count(&self) -> u64 {
-        self.decision_count.load(std::sync::atomic::Ordering::Relaxed)
+        self.decision_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub async fn run(self) {
@@ -132,7 +133,8 @@ impl EconomyAgent {
     }
 
     pub fn decision_count(&self) -> u64 {
-        self.decision_count.load(std::sync::atomic::Ordering::Relaxed)
+        self.decision_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub async fn run(self) {
@@ -196,7 +198,8 @@ impl AntiCheatAgent {
     }
 
     pub fn decision_count(&self) -> u64 {
-        self.decision_count.load(std::sync::atomic::Ordering::Relaxed)
+        self.decision_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub async fn run(self) {
@@ -221,8 +224,12 @@ impl AntiCheatAgent {
                             + (state.position.y - prev_pos.y).powi(2))
                         .sqrt();
                         if dist > self.max_speed_per_tick {
-                            warn!(actor = state.id.0, dist, max = self.max_speed_per_tick,
-                                "Speed violation detected");
+                            warn!(
+                                actor = state.id.0,
+                                dist,
+                                max = self.max_speed_per_tick,
+                                "Speed violation detected"
+                            );
                             v.push((state.id, dist));
                         }
                     }
@@ -255,7 +262,9 @@ pub async fn process_directives(
 ) {
     while let Some(directive) = rx.recv().await {
         match &directive {
-            WorldDirective::NarrativeEvent { message } => info!(message, "Directive: NarrativeEvent"),
+            WorldDirective::NarrativeEvent { message } => {
+                info!(message, "Directive: NarrativeEvent")
+            }
             WorldDirective::EconomyAdjust { resource, delta } => {
                 info!(%resource, delta, "Directive: EconomyAdjust");
             }
@@ -329,8 +338,7 @@ mod tests {
             s.insert(state.id, state);
         }
 
-        let agent =
-            AntiCheatAgent::new(Arc::clone(&snap), tx, Duration::from_millis(10), 50.0);
+        let agent = AntiCheatAgent::new(Arc::clone(&snap), tx, Duration::from_millis(10), 50.0);
 
         // Run one tick cycle to record positions
         let task = tokio::spawn(agent.run());
@@ -361,15 +369,18 @@ mod tests {
         use crate::world_engine::WorldEngine;
         use crate::ws_server::SharedEngine;
 
-        let engine: SharedEngine = std::sync::Arc::new(std::sync::Mutex::new(
-            Box::new(WorldEngine::new(WorldConfig::default())) as Box<dyn EngineApi + Send>,
-        ));
+        let engine: SharedEngine = std::sync::Arc::new(std::sync::Mutex::new(Box::new(
+            WorldEngine::new(WorldConfig::default()),
+        )
+            as Box<dyn EngineApi + Send>));
         let (tx, rx) = mpsc::channel(32);
         tokio::spawn(process_directives(rx, engine));
 
-        tx.send(WorldDirective::NarrativeEvent { message: "Test".to_string() })
-            .await
-            .unwrap();
+        tx.send(WorldDirective::NarrativeEvent {
+            message: "Test".to_string(),
+        })
+        .await
+        .unwrap();
         tx.send(WorldDirective::EconomyAdjust {
             resource: "wood".to_string(),
             delta: 50,
