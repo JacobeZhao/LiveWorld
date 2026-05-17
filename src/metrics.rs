@@ -156,6 +156,24 @@ async fn handle_request(
             }
         }
 
+        // ── JWT revocation ──────────────────────────────────────────────────
+        ("POST", "/auth/revoke") => {
+            let jti = serde_json::from_str::<serde_json::Value>(body)
+                .ok()
+                .and_then(|v| v["jti"].as_str().map(str::to_owned));
+            match jti {
+                None => (
+                    "400 Bad Request",
+                    "application/json",
+                    r#"{"error":"Missing jti"}"#.to_string(),
+                ),
+                Some(j) => {
+                    crate::auth::revoke_token(&j);
+                    ("200 OK", "application/json", r#"{"status":"revoked"}"#.to_string())
+                }
+            }
+        }
+
         // ── Health check (for k8s liveness/readiness probes) ───────────────
         ("GET", "/health") => (
             "200 OK",

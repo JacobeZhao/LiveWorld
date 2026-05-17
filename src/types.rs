@@ -94,7 +94,7 @@ pub struct ActorSpec {
     pub position: Position,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActorState {
     pub id: ActorId,
     pub name: String,
@@ -146,7 +146,7 @@ impl Default for WorldConfig {
             cell_size: 10.0,
             interest_radius: 5,
             tick_hz: 25,
-            snapshot_interval_secs: 60,
+            snapshot_interval_secs: 30,
             max_actors: 100_000,
             ws_port: 8080,
         }

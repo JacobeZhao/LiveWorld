@@ -197,6 +197,14 @@ async fn command_processor(
                     let _ = reply.send(Err("Name too long (max 64 chars)".into()));
                     continue;
                 }
+                if personality.len() > 256 {
+                    let _ = reply.send(Err("Personality too long (max 256 chars)".into()));
+                    continue;
+                }
+                if backstory.len() > 512 {
+                    let _ = reply.send(Err("Backstory too long (max 512 chars)".into()));
+                    continue;
+                }
                 let position = Position::new(
                     position.x.clamp(0.0, 9_999.0),
                     position.y.clamp(0.0, 9_999.0),

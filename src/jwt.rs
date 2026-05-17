@@ -17,12 +17,15 @@ pub struct Claims {
     pub iat: u64,
     /// Expiry (Unix seconds).
     pub exp: u64,
+    /// JWT ID — unique per token, used for revocation.
+    pub jti: String,
 }
 
 /// Issue a signed HS256 JWT valid for `ttl_secs` seconds.
 pub fn issue(sub: &str, secret: &[u8], ttl_secs: u64) -> anyhow::Result<String> {
     let now = now_secs();
-    let claims = Claims { sub: sub.to_owned(), iat: now, exp: now + ttl_secs };
+    let jti = format!("{sub}-{now}");
+    let claims = Claims { sub: sub.to_owned(), iat: now, exp: now + ttl_secs, jti };
     let header_b64 = URL_SAFE_NO_PAD.encode(HEADER);
     let payload_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims)?);
     let signing_input = format!("{header_b64}.{payload_b64}");

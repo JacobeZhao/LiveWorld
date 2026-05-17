@@ -139,7 +139,7 @@ impl AgentDecisionLoop {
         Self::new(spec, handle, cache, config, cb)
     }
 
-    /// Run until the actor is shut down. Intended to be spawned as a Tokio task.
+    /// Run until the actor is shut down or absent from snapshot for too long.
     ///
     /// Reads own state and nearby actors from the shared world snapshot (updated
     /// every few ticks by the main tick loop).  No per-actor state allocation needed.
@@ -149,6 +149,8 @@ impl AgentDecisionLoop {
 
         let sys = system_prompt(&self.spec);
         let my_id = self.spec.id;
+        const MAX_MISSES: u32 = 10;
+        let mut consecutive_misses: u32 = 0;
 
         loop {
             interval.tick().await;
@@ -156,9 +158,9 @@ impl AgentDecisionLoop {
             // Extract own state and nearby actors without holding the lock across await.
             let (state_opt, nearby) = {
                 let snap = world_snapshot.lock().unwrap();
-                let my_state = snap.iter().find(|s| s.id == my_id).cloned();
+                let my_state = snap.get(&my_id).cloned();
                 let nearby = if let Some(ref st) = my_state {
-                    snap.iter()
+                    snap.values()
                         .filter(|s| s.id != my_id)
                         .filter(|s| {
                             let dx = s.position.x - st.position.x;
@@ -175,8 +177,18 @@ impl AgentDecisionLoop {
             };
 
             let state = match state_opt {
-                Some(s) => s,
-                None => continue, // not yet in snapshot; wait for next tick
+                Some(s) => {
+                    consecutive_misses = 0;
+                    s
+                }
+                None => {
+                    consecutive_misses += 1;
+                    if consecutive_misses >= MAX_MISSES {
+                        debug!(actor = %my_id.0, "Actor absent from snapshot for {MAX_MISSES} cycles — stopping decision loop");
+                        return;
+                    }
+                    continue;
+                }
             };
 
             let user = user_prompt(&state, &nearby);

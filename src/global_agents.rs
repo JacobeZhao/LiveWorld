@@ -17,7 +17,8 @@ use tracing::{info, warn};
 pub use crate::types::WorldDirective;
 
 /// World snapshot shared between the tick thread and global agents.
-pub type SharedSnapshot = Arc<Mutex<Vec<ActorState>>>;
+/// Keyed by ActorId for O(1) lookup and clean remote-actor merging.
+pub type SharedSnapshot = Arc<Mutex<ahash::AHashMap<ActorId, ActorState>>>;
 
 // ── Global Agent trait ────────────────────────────────────────────────────────
 
@@ -210,7 +211,8 @@ impl AntiCheatAgent {
 
             // Collect state and violations with the lock held (no await inside).
             let violations: Vec<(ActorId, f32)> = {
-                let current: Vec<ActorState> = self.snapshot.lock().unwrap().clone();
+                let current: Vec<ActorState> =
+                    self.snapshot.lock().unwrap().values().cloned().collect();
                 let mut last = self.last_positions.lock().unwrap();
                 let mut v = Vec::new();
                 for state in &current {
@@ -277,7 +279,7 @@ mod tests {
     use std::time::Duration;
 
     fn make_snapshot_shared() -> SharedSnapshot {
-        Arc::new(Mutex::new(vec![]))
+        Arc::new(Mutex::new(ahash::AHashMap::new()))
     }
 
     fn make_cache() -> Arc<AsyncMutex<SemanticCache>> {
@@ -316,14 +318,15 @@ mod tests {
         // Pre-populate with an actor
         {
             let mut s = snap.lock().unwrap();
-            s.push(ActorState {
+            let state = ActorState {
                 id: ActorId(1),
                 name: "Cheater".to_string(),
                 position: Position::new(0.0, 0.0),
                 cell: GridCell(0, 0),
                 tick: 0,
                 last_utterance: None,
-            });
+            };
+            s.insert(state.id, state);
         }
 
         let agent =
@@ -336,7 +339,7 @@ mod tests {
         // Teleport the actor far away
         {
             let mut s = snap.lock().unwrap();
-            s[0].position = Position::new(9999.0, 9999.0);
+            s.get_mut(&ActorId(1)).unwrap().position = Position::new(9999.0, 9999.0);
         }
 
         tokio::time::sleep(Duration::from_millis(20)).await;

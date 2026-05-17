@@ -1,29 +1,34 @@
 /// Cross-pod world state synchronisation via Redis pub/sub.
 ///
 /// When `REDIS_URL` is set:
-///   - A publisher task sends the local actor snapshot to `liveworld:world_state`
-///     every second, tagged with the pod's `POD_NAME`.
-///   - A subscriber task merges snapshots from *other* pods into the local
-///     `SharedSnapshot` so clients on any pod can see the full world.
+///   - A publisher task sends only the *delta* (new/updated + removed actors)
+///     to `liveworld:world_state` once per second, tagged with the pod's `POD_NAME`.
+///   - A subscriber task merges remote deltas into the local `SharedSnapshot`,
+///     removing tombstoned actors and adding new ones (local actors are authoritative).
+///   - Both publisher and subscriber reconnect with exponential back-off on error.
 ///
 /// When `REDIS_URL` is NOT set → single-pod mode; this module is a no-op.
 use crate::global_agents::SharedSnapshot;
-use crate::types::ActorState;
+use crate::types::{ActorId, ActorState};
 use anyhow::Result;
 use futures_util::StreamExt;
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
 const CHANNEL: &str = "liveworld:world_state";
 const PUBLISH_INTERVAL_MS: u64 = 1_000;
+const RECONNECT_BASE_MS: u64 = 500;
+const RECONNECT_MAX_MS: u64 = 30_000;
 
 #[derive(Serialize, Deserialize)]
 struct SyncPayload {
     pod_id: String,
-    states: Vec<ActorState>,
+    /// Actors that were added or updated since the last publish.
+    updates: Vec<ActorState>,
+    /// Actor IDs that were removed since the last publish.
+    removed: Vec<ActorId>,
 }
 
 pub async fn run_redis_sync(local_snapshot: SharedSnapshot) -> Result<()> {
@@ -35,48 +40,120 @@ pub async fn run_redis_sync(local_snapshot: SharedSnapshot) -> Result<()> {
         }
     };
 
-    let pod_id = std::env::var("POD_NAME").unwrap_or_else(|_| {
-        format!("pod-{}", std::process::id())
-    });
+    let pod_id = std::env::var("POD_NAME")
+        .unwrap_or_else(|_| format!("pod-{}", std::process::id()));
 
     info!(%url, %pod_id, "Redis cross-pod sync enabled");
 
     let client = redis::Client::open(url.as_str())?;
 
-    // Publisher: push local snapshot every second.
+    // Publisher: compute delta vs previous snapshot, publish only changes.
     {
         let pub_client = client.clone();
-        let pub_snap = Arc::clone(&local_snapshot);
+        let pub_snap = std::sync::Arc::clone(&local_snapshot);
         let my_pod_id = pod_id.clone();
         tokio::spawn(async move {
-            let mut ticker =
-                tokio::time::interval(Duration::from_millis(PUBLISH_INTERVAL_MS));
-            loop {
-                ticker.tick().await;
-                let mut conn = match pub_client.get_async_connection().await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        warn!(err = %e, "Redis publish connect failed; retrying");
-                        continue;
-                    }
-                };
-                let states: Vec<ActorState> = pub_snap.lock().unwrap().clone();
-                let payload = SyncPayload { pod_id: my_pod_id.clone(), states };
-                match serde_json::to_string(&payload) {
-                    Ok(json) => {
-                        let _: std::result::Result<i64, _> =
-                            conn.publish(CHANNEL, &json).await;
-                    }
-                    Err(e) => error!(err = %e, "Failed to serialise snapshot for Redis"),
-                }
-            }
+            publisher_loop(pub_client, pub_snap, my_pod_id).await;
         });
     }
 
-    // Subscriber: merge snapshots from other pods.
-    let mut pubsub = client.get_async_connection().await?.into_pubsub();
-    pubsub.subscribe(CHANNEL).await?;
+    // Subscriber: reconnect loop.
+    subscriber_loop(client, local_snapshot, pod_id).await;
 
+    Ok(())
+}
+
+async fn publisher_loop(
+    client: redis::Client,
+    snap: SharedSnapshot,
+    pod_id: String,
+) {
+    let mut ticker = tokio::time::interval(Duration::from_millis(PUBLISH_INTERVAL_MS));
+    let mut prev: ahash::AHashMap<ActorId, ActorState> = ahash::AHashMap::new();
+    let mut backoff_ms = RECONNECT_BASE_MS;
+
+    loop {
+        ticker.tick().await;
+
+        let conn_result = client.get_async_connection().await;
+        let mut conn = match conn_result {
+            Ok(c) => {
+                backoff_ms = RECONNECT_BASE_MS;
+                c
+            }
+            Err(e) => {
+                warn!(err = %e, backoff_ms, "Redis publish connect failed; retrying");
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                backoff_ms = (backoff_ms * 2).min(RECONNECT_MAX_MS);
+                continue;
+            }
+        };
+
+        let current: ahash::AHashMap<ActorId, ActorState> =
+            snap.lock().unwrap().clone();
+
+        // Compute delta.
+        let updates: Vec<ActorState> = current
+            .values()
+            .filter(|s| prev.get(&s.id).map_or(true, |p| p != *s))
+            .cloned()
+            .collect();
+        let removed: Vec<ActorId> = prev
+            .keys()
+            .filter(|id| !current.contains_key(id))
+            .copied()
+            .collect();
+
+        prev = current;
+
+        if updates.is_empty() && removed.is_empty() {
+            continue;
+        }
+
+        let payload = SyncPayload { pod_id: pod_id.clone(), updates, removed };
+        match serde_json::to_string(&payload) {
+            Ok(json) => {
+                let res: std::result::Result<i64, _> = conn.publish(CHANNEL, &json).await;
+                if let Err(e) = res {
+                    error!(err = %e, "Redis publish failed");
+                }
+            }
+            Err(e) => error!(err = %e, "Failed to serialise delta for Redis"),
+        }
+    }
+}
+
+async fn subscriber_loop(
+    client: redis::Client,
+    local_snapshot: SharedSnapshot,
+    pod_id: String,
+) {
+    let mut backoff_ms = RECONNECT_BASE_MS;
+    loop {
+        match client.get_async_connection().await {
+            Ok(conn) => {
+                backoff_ms = RECONNECT_BASE_MS;
+                info!("Redis subscriber connected");
+                if let Err(e) = run_subscriber(conn, &local_snapshot, &pod_id).await {
+                    warn!(err = %e, "Redis subscriber error; reconnecting");
+                }
+            }
+            Err(e) => {
+                warn!(err = %e, backoff_ms, "Redis subscriber connect failed; retrying");
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+        backoff_ms = (backoff_ms * 2).min(RECONNECT_MAX_MS);
+    }
+}
+
+async fn run_subscriber(
+    conn: redis::aio::Connection,
+    local_snapshot: &SharedSnapshot,
+    pod_id: &str,
+) -> Result<()> {
+    let mut pubsub = conn.into_pubsub();
+    pubsub.subscribe(CHANNEL).await?;
     let mut stream = pubsub.on_message();
     while let Some(msg) = stream.next().await {
         let raw: String = match msg.get_payload() {
@@ -88,24 +165,28 @@ pub async fn run_redis_sync(local_snapshot: SharedSnapshot) -> Result<()> {
         };
         match serde_json::from_str::<SyncPayload>(&raw) {
             Ok(payload) if payload.pod_id != pod_id => {
-                merge_remote_states(&local_snapshot, payload.states);
+                apply_remote_delta(local_snapshot, payload.updates, payload.removed);
             }
             Ok(_) => {} // own message; skip
-            Err(e) => warn!(err = %e, "Failed to deserialise remote snapshot"),
+            Err(e) => warn!(err = %e, "Failed to deserialise remote delta"),
         }
     }
-
     Ok(())
 }
 
-/// Add remote actors that are not present locally. Local actors are authoritative
-/// for their own positions and are never overwritten by remote data.
-fn merge_remote_states(local_snapshot: &SharedSnapshot, remote: Vec<ActorState>) {
+/// Merge a remote delta into the local snapshot.
+/// Local actors (those present in the local engine) are never overwritten.
+/// Remote actors that appear in `removed` are evicted from the snapshot.
+fn apply_remote_delta(
+    local_snapshot: &SharedSnapshot,
+    updates: Vec<ActorState>,
+    removed: Vec<ActorId>,
+) {
     let mut snap = local_snapshot.lock().unwrap();
-    let local_ids: ahash::AHashSet<_> = snap.iter().map(|s| s.id).collect();
-    for state in remote {
-        if !local_ids.contains(&state.id) {
-            snap.push(state);
-        }
+    for id in removed {
+        snap.remove(&id);
+    }
+    for state in updates {
+        snap.entry(state.id).or_insert(state);
     }
 }

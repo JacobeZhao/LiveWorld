@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     let mut store = SnapshotStore::new("data/snapshots", 5)?;
 
     // ── Shared world snapshot (for global agents) ──────────────────────────────
-    let world_snapshot: SharedSnapshot = Arc::new(Mutex::new(Vec::new()));
+    let world_snapshot: SharedSnapshot = Arc::new(Mutex::new(ahash::AHashMap::new()));
 
     // ── Cold-start recovery: restore actors + decision loops from disk ─────────
     {
@@ -127,22 +127,21 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── Periodic snapshot: update in-memory + persist to disk ─────────────────
+    // ── Periodic snapshot: persist world state to disk ────────────────────────
+    // `store` is moved here; it is only written from this one task.
+    // The tick loop owns SharedSnapshot updates; this task only writes to disk.
     {
         let engine = Arc::clone(&shared_engine);
-        let snap = Arc::clone(&world_snapshot);
         let interval_secs = cfg.snapshot_interval_secs;
-        // `store` is moved here; it is only written from this one task.
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 ticker.tick().await;
-                let (tick, states, world_snap) = {
+                let (tick, world_snap) = {
                     let eng = engine.lock().unwrap();
-                    (eng.tick_count(), eng.full_snapshot(), eng.world_snapshot_for_persist())
+                    (eng.tick_count(), eng.world_snapshot_for_persist())
                 };
-                *snap.lock().unwrap() = states;
                 if let Err(e) = store.write(&world_snap) {
                     tracing::warn!(tick, err = %e, "Failed to write snapshot");
                 } else {
@@ -153,6 +152,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Tick loop (dedicated OS thread) ────────────────────────────────────────
+    // Merges local actor states into SharedSnapshot while preserving remote actors
+    // that were injected by Redis cross-pod sync.
     {
         let engine = Arc::clone(&shared_engine);
         let snap = Arc::clone(&world_snapshot);
@@ -160,18 +161,31 @@ async fn main() -> anyhow::Result<()> {
         std::thread::spawn(move || {
             let tick_interval = Duration::from_secs_f64(1.0 / tick_hz as f64);
             let mut next_tick = std::time::Instant::now();
+            // Track which IDs were local last cycle so we can evict departed actors.
+            let mut prev_local_ids: ahash::AHashSet<liveworld::types::ActorId> =
+                ahash::AHashSet::new();
             info!(hz = tick_hz, "Tick loop started on dedicated thread");
             loop {
-                let states = {
+                let states_opt = {
                     let mut eng = engine.lock().unwrap();
                     eng.tick();
                     let count = eng.tick_count();
                     if count % 25 == 0 { Some(eng.full_snapshot()) } else { None }
                 };
-                if let Some(s) = states {
+                if let Some(states) = states_opt {
+                    let local_ids: ahash::AHashSet<liveworld::types::ActorId> =
+                        states.iter().map(|s| s.id).collect();
                     if let Ok(mut shared) = snap.lock() {
-                        *shared = s;
+                        // Remove actors that were local last tick but are gone now.
+                        // Remote actors (not in prev_local_ids) are preserved.
+                        shared.retain(|id, _| {
+                            !prev_local_ids.contains(id) || local_ids.contains(id)
+                        });
+                        for state in states {
+                            shared.insert(state.id, state);
+                        }
                     }
+                    prev_local_ids = local_ids;
                 }
                 next_tick += tick_interval;
                 let now = std::time::Instant::now();
