@@ -63,4 +63,4 @@ jobs:
         run: |
           git config user.email "ci@github.com"
           git config user.name "GitHub CI"
-          git push https://JacobeZhao:${HF_TOKEN}@huggingface.co/spaces/JacobeZhao/LiveWorld master --force
+          git push https://JacobeZhao:${HF_TOKEN}@huggingface.co/spaces/JacobeZhao/LiveWorld master:main --force
