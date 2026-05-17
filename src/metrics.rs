@@ -156,6 +156,13 @@ async fn handle_request(
             }
         }
 
+        // ── Health check (for k8s liveness/readiness probes) ───────────────
+        ("GET", "/health") => (
+            "200 OK",
+            "application/json",
+            r#"{"status":"ok"}"#.to_string(),
+        ),
+
         // ── Frontend HTML ────────────────────────────────────────────────────
         ("GET", "/" | "/index.html") => {
             let html = tokio::fs::read_to_string("static/index.html")

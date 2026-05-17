@@ -140,17 +140,44 @@ impl AgentDecisionLoop {
     }
 
     /// Run until the actor is shut down. Intended to be spawned as a Tokio task.
-    pub async fn run(self, state_snapshot: Arc<Mutex<ActorState>>, nearby_snapshot: Arc<Mutex<Vec<ActorState>>>) {
+    ///
+    /// Reads own state and nearby actors from the shared world snapshot (updated
+    /// every few ticks by the main tick loop).  No per-actor state allocation needed.
+    pub async fn run(self, world_snapshot: crate::global_agents::SharedSnapshot) {
         let mut interval = time::interval(self.config.decision_interval);
         interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
         let sys = system_prompt(&self.spec);
+        let my_id = self.spec.id;
 
         loop {
             interval.tick().await;
 
-            let state = state_snapshot.lock().await.clone();
-            let nearby = nearby_snapshot.lock().await.clone();
+            // Extract own state and nearby actors without holding the lock across await.
+            let (state_opt, nearby) = {
+                let snap = world_snapshot.lock().unwrap();
+                let my_state = snap.iter().find(|s| s.id == my_id).cloned();
+                let nearby = if let Some(ref st) = my_state {
+                    snap.iter()
+                        .filter(|s| s.id != my_id)
+                        .filter(|s| {
+                            let dx = s.position.x - st.position.x;
+                            let dy = s.position.y - st.position.y;
+                            (dx * dx + dy * dy).sqrt() < 500.0
+                        })
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                (my_state, nearby)
+            };
+
+            let state = match state_opt {
+                Some(s) => s,
+                None => continue, // not yet in snapshot; wait for next tick
+            };
 
             let user = user_prompt(&state, &nearby);
 

@@ -1,20 +1,21 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: liveworld
   namespace: liveworld
   labels:
     app: liveworld
 spec:
-  replicas: 2                          # scale horizontally; each replica = one shard
+  replicas: 2
+  serviceName: liveworld-headless      # required for StatefulSet DNS
   selector:
     matchLabels:
       app: liveworld
-  strategy:
+  updateStrategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0                # zero-downtime rollout
-      maxSurge: 1
+  podManagementPolicy: Parallel        # scale up/down pods concurrently
   template:
     metadata:
       labels:
@@ -36,6 +37,11 @@ spec:
             - name: http
               containerPort: 8081
               protocol: TCP
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           envFrom:
             - configMapRef:
                 name: liveworld-config
@@ -50,33 +56,28 @@ spec:
               memory: "1Gi"
           livenessProbe:
             httpGet:
-              path: /metrics
+              path: /health
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /metrics
+              path: /health
               port: 8081
             initialDelaySeconds: 3
             periodSeconds: 5
           volumeMounts:
             - name: data
               mountPath: /app/data
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: liveworld-data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: liveworld-data
-  namespace: liveworld
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+  # Per-pod PVC: each StatefulSet pod gets its own snapshot volume.
+  # ReadWriteOnce is fine because only one pod mounts each volume.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

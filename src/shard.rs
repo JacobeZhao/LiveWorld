@@ -127,6 +127,22 @@ impl EngineApi for ShardedEngine {
     fn full_snapshot(&self) -> Vec<ActorState> {
         self.shards.iter().flat_map(|s| s.full_snapshot()).collect()
     }
+
+    fn spawn_actor_standalone(&mut self, spec: ActorSpec) -> ActorHandle {
+        let idx = self.shard_idx(spec.position.x);
+        self.shards[idx].spawn_actor_standalone(spec)
+    }
+
+    fn world_snapshot_for_persist(&self) -> crate::persistence::WorldSnapshot {
+        let actors = self.shards.iter()
+            .flat_map(|s| s.world_snapshot_for_persist().actors)
+            .collect();
+        crate::persistence::WorldSnapshot {
+            tick: self.global_tick,
+            timestamp_ms: crate::types::now_ms(),
+            actors,
+        }
+    }
 }
 
 #[cfg(test)]

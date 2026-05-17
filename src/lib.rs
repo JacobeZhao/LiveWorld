@@ -10,6 +10,7 @@ pub mod jwt;
 pub mod llm_adapter;
 pub mod metrics;
 pub mod persistence;
+pub mod redis_sync;
 pub mod semantic_cache;
 pub mod shard;
 pub mod spatial_grid;

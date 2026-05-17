@@ -15,6 +15,9 @@ pub trait EngineApi: Send {
         session: SessionId,
     ) -> (ActorHandle, SessionQueue);
 
+    /// Spawn an actor without a client session (used for cold-start recovery).
+    fn spawn_actor_standalone(&mut self, spec: ActorSpec) -> ActorHandle;
+
     fn remove_session(&mut self, session: SessionId, despawn_actor: bool);
 
     fn apply_directive(&self, directive: &WorldDirective);
@@ -25,6 +28,9 @@ pub trait EngineApi: Send {
     fn session_count(&self) -> usize;
     fn uptime_secs(&self) -> u64;
     fn full_snapshot(&self) -> Vec<ActorState>;
+
+    /// Full snapshot including specs, for disk persistence.
+    fn world_snapshot_for_persist(&self) -> crate::persistence::WorldSnapshot;
 }
 
 // ── WorldEngine → EngineApi ───────────────────────────────────────────────────
@@ -68,5 +74,13 @@ impl EngineApi for WorldEngine {
 
     fn full_snapshot(&self) -> Vec<ActorState> {
         WorldEngine::full_snapshot(self)
+    }
+
+    fn spawn_actor_standalone(&mut self, spec: ActorSpec) -> ActorHandle {
+        WorldEngine::spawn_actor_standalone(self, spec)
+    }
+
+    fn world_snapshot_for_persist(&self) -> crate::persistence::WorldSnapshot {
+        WorldEngine::world_snapshot_for_persist(self)
     }
 }

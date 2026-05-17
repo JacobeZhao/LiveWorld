@@ -29,3 +29,24 @@ spec:
       port: 8081
       targetPort: 8081
   type: ClusterIP
+---
+# Headless service required by StatefulSet for stable DNS names
+# (liveworld-0.liveworld-headless.liveworld.svc.cluster.local, etc.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: liveworld-headless
+  namespace: liveworld
+  labels:
+    app: liveworld
+spec:
+  clusterIP: None
+  selector:
+    app: liveworld
+  ports:
+    - name: websocket
+      port: 8080
+      targetPort: 8080
+    - name: http
+      port: 8081
+      targetPort: 8081

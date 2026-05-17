@@ -216,6 +216,20 @@ impl WorldEngine {
     pub fn uptime_secs(&self) -> u64 { self.start_time.elapsed().as_secs() }
     pub fn full_snapshot(&self) -> Vec<ActorState> { self.runtime.snapshot_all() }
     pub fn config(&self) -> &WorldConfig { &self.cfg }
+
+    /// Spawn an actor without registering a session (cold-start recovery).
+    pub fn spawn_actor_standalone(&mut self, spec: ActorSpec) -> ActorHandle {
+        self.runtime.spawn_actor(spec)
+    }
+
+    /// Full snapshot with specs, for disk persistence.
+    pub fn world_snapshot_for_persist(&self) -> crate::persistence::WorldSnapshot {
+        let states = self.runtime.snapshot_all();
+        let specs = self.runtime.specs_snapshot();
+        let specs_map: ahash::AHashMap<ActorId, ActorSpec> =
+            specs.into_iter().map(|s| (s.id, s)).collect();
+        crate::persistence::build_snapshot(self.tick_count, &states, &specs_map)
+    }
 }
 
 #[cfg(test)]

@@ -56,6 +56,9 @@ hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
 
+# Redis for cross-pod world-state sync (optional; activated via REDIS_URL env var)
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tokio-test = "0.4"

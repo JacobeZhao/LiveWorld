@@ -2,8 +2,13 @@
 // to the world engine, and streams state deltas back to each client at 25 Hz.
 
 use crate::actor::ActorHandle;
+use crate::agent_decision::{AgentDecisionLoop, DecisionConfig};
+use crate::circuit_breaker::CircuitBreaker;
 use crate::engine_api::EngineApi;
+use crate::global_agents::SharedSnapshot;
+use crate::llm_adapter::create_adapter;
 use crate::metrics;
+use crate::semantic_cache::SemanticCache;
 use crate::types::{
     ActorId, ActorMessage, ActorSpec, ClientCommand, LlmModel, Position, ServerMessage,
     SessionId, WorldConfig,
@@ -12,7 +17,7 @@ use crate::world_engine::SessionQueue;
 use ahash::AHashMap;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::net::{TcpListener, TcpStream};
@@ -25,6 +30,38 @@ use tracing::{error, info, warn};
 /// Use `Box<dyn EngineApi + Send>` so callers are decoupled from the
 /// concrete type (WorldEngine or ShardedEngine).
 pub type SharedEngine = Arc<Mutex<Box<dyn EngineApi + Send>>>;
+
+// ── Per-IP connection limiter ─────────────────────────────────────────────────
+
+struct ConnectionLimiter {
+    counts: AHashMap<IpAddr, u32>,
+    max_per_ip: u32,
+}
+
+impl ConnectionLimiter {
+    fn new(max_per_ip: u32) -> Self {
+        Self { counts: AHashMap::new(), max_per_ip }
+    }
+
+    fn try_acquire(&mut self, ip: IpAddr) -> bool {
+        let count = self.counts.entry(ip).or_insert(0);
+        if *count >= self.max_per_ip {
+            false
+        } else {
+            *count += 1;
+            true
+        }
+    }
+
+    fn release(&mut self, ip: IpAddr) {
+        if let Some(count) = self.counts.get_mut(&ip) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.counts.remove(&ip);
+            }
+        }
+    }
+}
 
 // ── Rate limiter (token bucket, per-connection) ───────────────────────────────
 
@@ -86,21 +123,39 @@ pub enum EngineCommand {
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
-pub async fn run_ws_server(engine: SharedEngine, cfg: WorldConfig) -> Result<()> {
+pub async fn run_ws_server(
+    engine: SharedEngine,
+    cfg: WorldConfig,
+    world_snapshot: SharedSnapshot,
+) -> Result<()> {
     let addr = format!("0.0.0.0:{}", cfg.ws_port);
     let listener = TcpListener::bind(&addr).await?;
     info!("WebSocket server listening on {}", addr);
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<EngineCommand>(4096);
-    // Single command-processor task serialises all engine mutations.
-    tokio::spawn(command_processor(cmd_rx, Arc::clone(&engine)));
+    tokio::spawn(command_processor(cmd_rx, Arc::clone(&engine), world_snapshot));
+
+    let limiter = Arc::new(Mutex::new(ConnectionLimiter::new(10))); // max 10 connections per IP
 
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
+                let ip = addr.ip();
+                {
+                    let mut lim = limiter.lock().unwrap();
+                    if !lim.try_acquire(ip) {
+                        warn!(%addr, "Per-IP connection limit reached; rejecting");
+                        continue;
+                    }
+                }
                 let session = SessionId::next();
                 info!(session = session.0, %addr, "New connection");
-                tokio::spawn(handle_connection(stream, addr, session, cmd_tx.clone()));
+                let lim = Arc::clone(&limiter);
+                let tx = cmd_tx.clone();
+                tokio::spawn(async move {
+                    handle_connection(stream, addr, session, tx).await;
+                    lim.lock().unwrap().release(ip);
+                });
             }
             Err(e) => error!("Accept error: {}", e),
         }
@@ -109,13 +164,23 @@ pub async fn run_ws_server(engine: SharedEngine, cfg: WorldConfig) -> Result<()>
 
 // ── Command processor ─────────────────────────────────────────────────────────
 
-/// Runs as a single task; owns a local `session_handles` map so that
+/// Runs as a single task; owns all session-local state so that
 /// MoveActor / ChatActor bypass the engine lock entirely (SPSC push is lock-free).
 async fn command_processor(
     mut cmd_rx: mpsc::Receiver<EngineCommand>,
     engine: SharedEngine,
+    world_snapshot: SharedSnapshot,
 ) {
     let mut session_handles: AHashMap<SessionId, ActorHandle> = AHashMap::new();
+    // Per-session AgentDecisionLoop join handles — aborted on disconnect/destroy.
+    let mut decision_handles: AHashMap<SessionId, tokio::task::JoinHandle<()>> = AHashMap::new();
+    // Shared LLM cache per model type (lazy-initialised).
+    let mut llm_caches: AHashMap<
+        String,
+        Arc<tokio::sync::Mutex<SemanticCache>>,
+    > = AHashMap::new();
+    // One circuit breaker shared across all agents on this pod.
+    let circuit_breaker = Arc::new(CircuitBreaker::new(5, Duration::from_secs(30)));
 
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
@@ -137,14 +202,36 @@ async fn command_processor(
                     position.y.clamp(0.0, 9_999.0),
                 );
                 let id = ActorId::next();
-                let spec =
-                    ActorSpec { id, name, personality, backstory, model, position };
+                let model_key = model.to_string();
+                let model_for_cache = model.clone();
+                let spec = ActorSpec { id, name, personality, backstory, model, position };
+                let spec_for_dl = spec.clone();
                 let (handle, queue) = {
                     let mut eng = engine.lock().unwrap();
                     eng.spawn_actor_for_session(spec, session)
                 };
+                let handle_for_dl = handle.clone();
                 session_handles.insert(session, handle);
                 info!(session = session.0, actor = id.0, "Actor spawned");
+
+                // Get or create a per-model LLM cache, then spawn the decision loop.
+                let llm_cache = llm_caches
+                    .entry(model_key)
+                    .or_insert_with(|| {
+                        let adapter = create_adapter(&model_for_cache);
+                        Arc::new(tokio::sync::Mutex::new(SemanticCache::new(256, adapter)))
+                    })
+                    .clone();
+                let dl = AgentDecisionLoop::new(
+                    spec_for_dl,
+                    handle_for_dl,
+                    llm_cache,
+                    DecisionConfig::default(),
+                    Arc::clone(&circuit_breaker),
+                );
+                let snap = Arc::clone(&world_snapshot);
+                decision_handles.insert(session, tokio::spawn(dl.run(snap)));
+
                 let _ = reply.send(Ok((id, queue)));
             }
 
@@ -169,14 +256,18 @@ async fn command_processor(
 
             EngineCommand::DestroyActor { session, actor_id: _ } => {
                 session_handles.remove(&session);
-                let mut eng = engine.lock().unwrap();
-                eng.remove_session(session, true);
+                if let Some(jh) = decision_handles.remove(&session) {
+                    jh.abort();
+                }
+                engine.lock().unwrap().remove_session(session, true);
             }
 
             EngineCommand::SessionDisconnect { session } => {
                 session_handles.remove(&session);
-                let mut eng = engine.lock().unwrap();
-                eng.remove_session(session, true);
+                if let Some(jh) = decision_handles.remove(&session) {
+                    jh.abort();
+                }
+                engine.lock().unwrap().remove_session(session, true);
                 info!(session = session.0, "Session disconnected");
             }
         }

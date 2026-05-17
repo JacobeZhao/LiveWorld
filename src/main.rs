@@ -1,11 +1,14 @@
+use liveworld::agent_decision::{AgentDecisionLoop, DecisionConfig};
+use liveworld::circuit_breaker::CircuitBreaker;
 use liveworld::engine_api::EngineApi;
 use liveworld::global_agents::{
     AntiCheatAgent, DirectorAgent, EconomyAgent, SharedSnapshot, WorldDirective,
     process_directives,
 };
-use liveworld::llm_adapter::MockLlm;
+use liveworld::llm_adapter::{MockLlm, create_adapter};
 use liveworld::metrics::run_http_server;
-use liveworld::persistence::SnapshotStore;
+use liveworld::persistence::{self, SnapshotStore};
+use liveworld::redis_sync::run_redis_sync;
 use liveworld::semantic_cache::SemanticCache;
 use liveworld::shard::ShardedEngine;
 use liveworld::types::WorldConfig;
@@ -55,10 +58,39 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // ── Snapshot store ─────────────────────────────────────────────────────────
-    let _store = SnapshotStore::new("data/snapshots", 5)?;
+    let mut store = SnapshotStore::new("data/snapshots", 5)?;
 
     // ── Shared world snapshot (for global agents) ──────────────────────────────
     let world_snapshot: SharedSnapshot = Arc::new(Mutex::new(Vec::new()));
+
+    // ── Cold-start recovery: restore actors + decision loops from disk ─────────
+    {
+        match store.read_latest() {
+            Ok(Some(snap)) => {
+                let specs = persistence::restore_actors(&snap);
+                info!(count = specs.len(), "Cold start: restoring world from snapshot");
+                let cb = Arc::new(CircuitBreaker::new(5, Duration::from_secs(30)));
+                for spec in specs {
+                    let handle = {
+                        let mut eng = shared_engine.lock().unwrap();
+                        eng.spawn_actor_standalone(spec.clone())
+                    };
+                    let adapter = create_adapter(&spec.model);
+                    let actor_cache = Arc::new(AsyncMutex::new(SemanticCache::new(256, adapter)));
+                    let dl = AgentDecisionLoop::new(
+                        spec,
+                        handle,
+                        actor_cache,
+                        DecisionConfig::default(),
+                        Arc::clone(&cb),
+                    );
+                    tokio::spawn(dl.run(Arc::clone(&world_snapshot)));
+                }
+            }
+            Ok(None) => info!("No snapshot found — starting fresh"),
+            Err(e) => tracing::warn!(err = %e, "Failed to read snapshot; starting fresh"),
+        }
+    }
 
     // ── LLM cache for global agents ────────────────────────────────────────────
     let mock_llm = Arc::new(MockLlm::new());
@@ -95,22 +127,27 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── Periodic snapshot updater (for global agents) ──────────────────────────
+    // ── Periodic snapshot: update in-memory + persist to disk ─────────────────
     {
         let engine = Arc::clone(&shared_engine);
         let snap = Arc::clone(&world_snapshot);
         let interval_secs = cfg.snapshot_interval_secs;
+        // `store` is moved here; it is only written from this one task.
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(Duration::from_secs(interval_secs));
             ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 ticker.tick().await;
-                let (tick, states) = {
+                let (tick, states, world_snap) = {
                     let eng = engine.lock().unwrap();
-                    (eng.tick_count(), eng.full_snapshot())
+                    (eng.tick_count(), eng.full_snapshot(), eng.world_snapshot_for_persist())
                 };
                 *snap.lock().unwrap() = states;
-                info!(tick, "Periodic snapshot");
+                if let Err(e) = store.write(&world_snap) {
+                    tracing::warn!(tick, err = %e, "Failed to write snapshot");
+                } else {
+                    info!(tick, actors = world_snap.actors.len(), "Snapshot persisted");
+                }
             }
         });
     }
@@ -145,12 +182,22 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // ── HTTP server: metrics + frontend + /auth/token (port 8081) ─────────────
+    // ── HTTP server: metrics + frontend + /auth/token + /health (port 8081) ────
     {
         let engine = Arc::clone(&shared_engine);
         tokio::spawn(async move {
             if let Err(e) = run_http_server(engine, 8081).await {
                 tracing::error!("HTTP server error: {e}");
+            }
+        });
+    }
+
+    // ── Redis cross-pod sync (no-op when REDIS_URL unset) ─────────────────────
+    {
+        let snap = Arc::clone(&world_snapshot);
+        tokio::spawn(async move {
+            if let Err(e) = run_redis_sync(snap).await {
+                tracing::warn!(err = %e, "Redis sync exited");
             }
         });
     }
@@ -164,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
     // ── WebSocket server (blocks until shutdown) ───────────────────────────────
     info!("WebSocket server on port {}", cfg.ws_port);
     tokio::select! {
-        res = liveworld::ws_server::run_ws_server(shared_engine, cfg) => {
+        res = liveworld::ws_server::run_ws_server(shared_engine, cfg, world_snapshot) => {
             if let Err(e) = res { tracing::error!("WS server error: {e}"); }
         }
         _ = shutdown => {}

@@ -125,6 +125,11 @@ impl ActorRuntime {
     pub fn stats(&self) -> &RuntimeStats {
         &self.stats
     }
+
+    /// Snapshot specs of all live actors (for persistence).
+    pub fn specs_snapshot(&self) -> Vec<crate::types::ActorSpec> {
+        self.actors.values().map(|a| a.spec.clone()).collect()
+    }
 }
 
 
