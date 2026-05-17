@@ -275,7 +275,6 @@ impl PriorityScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm_adapter::MockLlm;
     use crate::types::{ActorId, GridCell, LlmModel};
 
     fn make_spec() -> ActorSpec {

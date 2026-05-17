@@ -148,7 +148,7 @@ impl EngineApi for ShardedEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{LlmModel, WorldConfig};
+    use crate::types::{ActorId, LlmModel, Position, WorldConfig};
 
     fn make_spec(id: u64, x: f32) -> ActorSpec {
         ActorSpec {

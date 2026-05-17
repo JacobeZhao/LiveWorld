@@ -572,8 +572,6 @@ async fn send_error(out_tx: &mpsc::Sender<Vec<u8>>, code: u32, message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine_api::EngineApi;
-    use crate::world_engine::WorldEngine;
 
     #[test]
     fn session_id_unique() {
