@@ -175,11 +175,16 @@ async fn handle_request(
         }
 
         // ── Health check (for k8s liveness/readiness probes) ───────────────
-        ("GET", "/health") => (
-            "200 OK",
-            "application/json",
-            r#"{"status":"ok"}"#.to_string(),
-        ),
+        ("GET", "/health") => {
+            let (actors, sessions, uptime) = {
+                let eng = engine.lock().unwrap();
+                (eng.actor_count(), eng.session_count(), eng.uptime_secs())
+            };
+            let body = format!(
+                r#"{{"status":"ok","actors":{actors},"sessions":{sessions},"uptime_secs":{uptime}}}"#
+            );
+            ("200 OK", "application/json", body)
+        }
 
         // ── Frontend HTML ────────────────────────────────────────────────────
         ("GET", "/" | "/index.html") => {

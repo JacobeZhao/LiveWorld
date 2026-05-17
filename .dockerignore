@@ -1,0 +1,11 @@
+target/
+.git/
+.github/
+k8s/
+k6/
+tests/
+data/
+*.md
+.env
+fly.toml
+nginx.conf

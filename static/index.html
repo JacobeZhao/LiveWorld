@@ -81,8 +81,20 @@ canvas { display: block; cursor: crosshair; }
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const WS_URL   = 'ws://localhost:8080';
-const HTTP_URL = 'http://localhost:8081';
+// Auto-detect URLs: localhost uses fixed ports; production uses same hostname.
+function getUrls() {
+  const hostname = window.location.hostname;
+  const isLocal  = hostname === 'localhost' || hostname === '127.0.0.1';
+  const isSecure = window.location.protocol === 'https:';
+  if (isLocal) {
+    return { ws: 'ws://localhost:8080', http: 'http://localhost:8081' };
+  }
+  return {
+    ws:   `${isSecure ? 'wss' : 'ws'}://${hostname}:8080`,
+    http: window.location.origin,   // 443 → 8081 via Fly.io mapping
+  };
+}
+const { ws: WS_URL, http: HTTP_URL } = getUrls();
 const WORLD_W  = 10000; // coordinate space
 const WORLD_H  = 10000;
 
@@ -323,12 +335,13 @@ canvas.addEventListener('wheel', (e) => {
 
 // ── Metrics polling ───────────────────────────────────────────────────────────
 function pollMetrics() {
-  fetch(`${HTTP_URL}/metrics`)
+  fetch(`${HTTP_URL}/health`)
     .then(r => r.json())
     .then(m => {
-      document.getElementById('s-actors').textContent   = m.actors;
-      document.getElementById('s-sessions').textContent = m.sessions;
-      document.getElementById('s-uptime').textContent   = formatUptime(m.uptime_secs);
+      document.getElementById('s-actors').textContent   = m.actors   ?? '—';
+      document.getElementById('s-sessions').textContent = m.sessions ?? '—';
+      document.getElementById('s-uptime').textContent   = m.uptime_secs != null
+        ? formatUptime(m.uptime_secs) : '—';
     })
     .catch(() => {})
     .finally(() => setTimeout(pollMetrics, 5000));

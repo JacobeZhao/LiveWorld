@@ -1,0 +1,60 @@
+# Fly.io deployment configuration for LiveWorld.
+# Deploy: fly launch --no-deploy && fly volumes create liveworld_data --size 1 && fly deploy
+
+app            = "liveworld"
+primary_region = "sin"          # Singapore; change to "lax" (LA) or "fra" (Frankfurt) as needed
+
+[build]
+
+[env]
+  RUST_LOG = "info"
+
+[vm]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "512mb"
+
+# ── HTTP service: frontend, auth, health (443 → internal 8081) ────────────────
+[[services]]
+  internal_port = 8081
+  protocol      = "tcp"
+  auto_stop_machines  = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    handlers    = ["http"]
+    port        = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port     = 443
+
+  [[services.http_checks]]
+    grace_period = "10s"
+    interval     = "15s"
+    method       = "get"
+    path         = "/health"
+    port         = 8081
+    timeout      = "2s"
+    type         = "http"
+
+# ── WebSocket service (wss://app.fly.dev:8080 → internal 8080) ───────────────
+[[services]]
+  internal_port = 8080
+  protocol      = "tcp"
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port     = 8080
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval     = "15s"
+    timeout      = "2s"
+
+# ── Persistent volume for snapshots ──────────────────────────────────────────
+[[mounts]]
+  source      = "liveworld_data"
+  destination = "/app/data"
